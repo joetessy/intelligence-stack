@@ -1,0 +1,14 @@
+# Secrets
+.env
+
+# macOS
+.DS_Store
+
+# Node
+node_modules/
+
+# Claude Code
+.claude/
+
+# Open WebUI data (Docker volume, not in repo, but just in case)
+open-webui-data/

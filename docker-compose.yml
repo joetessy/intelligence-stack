@@ -1,0 +1,200 @@
+# =============================================================================
+# Intelligence Stack
+# Services: SearXNG · FlareSolverr · Open WebUI · Faster-Whisper (STT)
+#           openedai-speech (TTS)
+# Native on host (not Docker):
+#   Ollama      → http://localhost:11434  (GGUF models, auto-unloads after 5m)
+#   MLX-LM      → http://localhost:5001   (MLX models, auto-starts via LaunchAgent)
+#
+# Start:   docker compose up -d
+# Stop:    docker compose down
+# Status:  ./status.sh
+# Logs:    docker compose logs -f [service]
+# MLX log: /tmp/mlx-server.log
+#
+# UIs:
+#   Open WebUI   → http://localhost:3000
+#   SearXNG      → http://localhost:8080
+#   FlareSolverr → internal only (Docker DNS: flaresolverr:8191, no host port)
+# =============================================================================
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # FlareSolverr — Cloudflare bypass proxy for SearXNG
+  # Allows SearXNG to scrape sites protected by Cloudflare (Guardian, Reuters, etc.)
+  # SearXNG engines reference this via the proxy url in settings.yml
+  # ---------------------------------------------------------------------------
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: flaresolverr
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8191/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    environment:
+      - LOG_LEVEL=warning
+      - LOG_HTML=false
+      - CAPTCHA_SOLVER=none
+    networks:
+      - ai-stack
+
+  # ---------------------------------------------------------------------------
+  # SearXNG — self-hosted metasearch engine
+  # Web UI:  http://localhost:8080
+  # JSON API: http://localhost:8080/search?q=hello&format=json
+  # ---------------------------------------------------------------------------
+  searxng:
+    image: searxng/searxng:latest
+    container_name: searxng
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./searxng:/etc/searxng:rw
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    environment:
+      - SEARXNG_SECRET=${SEARXNG_SECRET}
+      - SEARXNG_HOST=0.0.0.0
+      - SEARXNG_PORT=8080
+    depends_on:
+      flaresolverr:
+        condition: service_healthy
+    networks:
+      - ai-stack
+
+  # ---------------------------------------------------------------------------
+  # Faster-Whisper — local STT, OpenAI-compatible API
+  # Endpoint: http://localhost:8765/v1/audio/transcriptions
+  # ---------------------------------------------------------------------------
+  faster-whisper:
+    image: fedirz/faster-whisper-server:latest-cpu
+    container_name: faster-whisper
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8765:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    environment:
+      # small.en = better accuracy than base, still fast on M4 Max CPU
+      - WHISPER__MODEL=small.en
+    networks:
+      - ai-stack
+
+  # ---------------------------------------------------------------------------
+  # openedai-speech — local Piper-based TTS, OpenAI-compatible API
+  # Endpoint: http://localhost:8880/v1/audio/speech
+  # Voices: alloy, echo, fable, onyx, nova, shimmer (mapped to Piper models)
+  # Voice models are downloaded on first use and cached in the volume.
+  # ---------------------------------------------------------------------------
+  openedai-speech:
+    image: ghcr.io/matatonic/openedai-speech:latest
+    container_name: openedai-speech
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8880:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/v1/models"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    volumes:
+      - openedai-speech-voices:/app/voices
+      - openedai-speech-config:/app/config
+    environment:
+      - TTS_HOME=/app/voices
+      - HF_HOME=/app/voices
+    networks:
+      - ai-stack
+
+  # ---------------------------------------------------------------------------
+  # Open WebUI — chat interface with RAG, voice, web search
+  # UI: http://localhost:3000
+  # ---------------------------------------------------------------------------
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    volumes:
+      - open-webui-data:/app/backend/data
+    environment:
+      # ---- Ollama (native on host) -----------------------------------------
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+
+      # ---- Web search via SearXNG ------------------------------------------
+      - ENABLE_WEB_SEARCH=true
+      - WEB_SEARCH_ENGINE=searxng
+      - SEARXNG_QUERY_URL=http://searxng:8080/search
+
+      # ---- Speech-to-Text (Faster-Whisper) ---------------------------------
+      - AUDIO_STT_ENGINE=openai
+      - AUDIO_STT_OPENAI_API_BASE_URL=http://faster-whisper:8000/v1
+      - AUDIO_STT_OPENAI_API_KEY=none
+      - AUDIO_STT_MODEL=small.en
+
+      # ---- Text-to-Speech (openedai-speech / Piper) ------------------------
+      - AUDIO_TTS_ENGINE=openai
+      - AUDIO_TTS_OPENAI_API_BASE_URL=http://openedai-speech:8000/v1
+      - AUDIO_TTS_OPENAI_API_KEY=none
+      - AUDIO_TTS_MODEL=tts-1
+      - AUDIO_TTS_VOICE=nova
+
+      # ---- Security --------------------------------------------------------
+      - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY}
+      - ENABLE_API_KEYS=true
+
+      # ---- Privacy ---------------------------------------------------------
+      - SCARF_NO_ANALYTICS=true
+      - DO_NOT_TRACK=true
+      - ANONYMIZED_TELEMETRY=false
+
+      # ---- Embeddings (nomic-embed-text via Ollama → Neural Engine) --------
+      - RAG_EMBEDDING_ENGINE=ollama
+      - RAG_EMBEDDING_MODEL=nomic-embed-text
+      - RAG_OLLAMA_BASE_URL=http://host.docker.internal:11434
+
+      # ---- MLX-LM server (native on host, OpenAI-compatible) ---------------
+      - OPENAI_API_BASE_URL=http://host.docker.internal:5001/v1
+      - OPENAI_API_KEY=mlx-local
+
+      # ---- Model filter ----------------------------------------------------
+      - ENABLE_MODEL_FILTER=false
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    depends_on:
+      searxng:
+        condition: service_healthy
+      faster-whisper:
+        condition: service_healthy
+      openedai-speech:
+        condition: service_healthy
+    networks:
+      - ai-stack
+
+# =============================================================================
+volumes:
+  open-webui-data:
+  openedai-speech-voices:
+  openedai-speech-config:
+
+networks:
+  ai-stack:
+    driver: bridge

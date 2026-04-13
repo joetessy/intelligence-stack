@@ -1,0 +1,120 @@
+# =============================================================================
+# SearXNG settings.yml
+# Bind-mounted to /etc/searxng/settings.yml inside the container.
+#
+# use_default_settings: true means we ONLY override what's listed here.
+# Every other engine and setting retains the upstream default.
+# =============================================================================
+
+use_default_settings: true
+
+server:
+  # Overridden at runtime by SEARXNG_SECRET env var (set in .env → docker-compose.yml).
+  # Generate with: openssl rand -hex 32
+  secret_key: "REPLACE_ME_WITH_OPENSSL_RAND_HEX_32"
+  bind_address: "0.0.0.0"
+  port: 8080
+
+  # limiter requires Redis — set false for a private single-user stack.
+  limiter: false
+
+  # public_instance adds bot-detection suited for internet-facing instances.
+  # Disable for a local deployment to avoid rate-limiting your own containers.
+  public_instance: false
+
+  image_proxy: true
+
+search:
+  safe_search: 0
+
+  # CRITICAL: json must be listed here.
+  # Open WebUI calls /search?format=json — without it SearXNG returns 403.
+  formats:
+    - html
+    - json
+
+  default_lang: "auto"
+
+ui:
+  theme_args:
+    simple_style: auto
+  query_in_title: true
+
+outgoing:
+  request_timeout: 4.0
+  max_request_timeout: 15.0
+  pool_connections: 100
+  pool_maxsize: 20
+  enable_http2: true
+  # FlareSolverr proxy — bypasses Cloudflare on protected news sites
+  proxies:
+    http: "http://flaresolverr:8191"
+    https: "http://flaresolverr:8191"
+
+engines:
+  # --- General web (used by Open WebUI) ------------------------------------
+  - name: brave
+    disabled: false
+
+  - name: duckduckgo
+    disabled: false
+
+  - name: google
+    disabled: false
+
+  - name: bing
+    disabled: false
+
+  - name: wikipedia
+    disabled: false
+
+  - name: yandex
+    disabled: true
+
+  - name: yahoo
+    disabled: true
+
+  # --- News sources added to 'general' category ----------------------------
+  # These fire on general queries too, so Open WebUI gets news articles
+  # mixed into results when asking about current events.
+  - name: google news
+    disabled: false
+    categories: [general, news]
+
+  - name: bing news
+    disabled: false
+    categories: [general, news]
+
+  - name: brave.news
+    disabled: false
+    categories: [general, news]
+
+  # --- Standalone categories (SearXNG UI at localhost:8080 only) -----------
+  - name: google videos
+    disabled: false
+    categories: [videos]
+
+  - name: youtube
+    disabled: false
+    categories: [videos]
+
+  - name: google images
+    disabled: false
+    categories: [images]
+
+  - name: brave.images
+    disabled: false
+    categories: [images]
+
+  # Academic / science
+  - name: arxiv
+    disabled: false
+    categories: [science]
+
+  - name: semantic scholar
+    disabled: false
+    categories: [science]
+
+  - name: google scholar
+    disabled: false
+    categories: [science]
