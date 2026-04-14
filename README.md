@@ -2,26 +2,48 @@
 
 A fully self-hosted, offline-capable AI stack on Apple Silicon. No accounts, no cloud, no data leaving your machine.
 
+## UIs
+
+| Interface | URL | Purpose |
+|-----------|-----|---------|
+| **Open WebUI** | http://localhost:3000 | Chat, RAG, voice, web search |
+| **Dashboard** | http://localhost:3001 | Service health + model browser |
+| **SearXNG** | http://localhost:8080 | Search engine (direct access) |
+
+## Screenshots
+
+| | |
+|---|---|
+| ![Open WebUI](docs/webui.png) | ![Dashboard](docs/dashboard.png) |
+| **Open WebUI** — chat interface with all local models (Ollama + MLX) | **Dashboard** — live service health and model browser |
+| ![SearXNG](docs/searchxng.png) | ![Status](docs/status_command.png) |
+| **SearXNG** — self-hosted metasearch with category tabs | **`./status.sh`** — terminal health check |
+
+---
+
 ## Architecture
 
 ```
 Docker:
-  Open WebUI (3000)  ----->  SearXNG (8080)  ----->  FlareSolverr (8191)
+  Open WebUI (3000)  ----->  SearXNG (8080)  ----->  FlareSolverr (internal)
        |                         search engine         cloudflare bypass
        |
        +--->  Faster-Whisper (8765)    speech-to-text
        +--->  openedai-speech (8880)   text-to-speech
 
+  Dashboard (3001)   health monitor for all services
+
 Native on host:
-  MLX-LM (5001)     fast Apple Silicon inference (OpenAI-compatible API)
-  Ollama (11434)     GGUF models + embeddings
+  MLX-LM (5001)     Apple Silicon inference (OpenAI-compatible API)
+  Ollama (11434)    GGUF models + embeddings
 ```
 
 ## Services
 
 | Service | Purpose | Port |
 |---------|---------|------|
-| [Open WebUI](https://github.com/open-webui/open-webui) | Chat interface, workspace models, RAG, tools | 3000 |
+| [Open WebUI](https://github.com/open-webui/open-webui) | Chat interface, RAG, tools | 3000 |
+| Dashboard | Service health monitor + model browser | 3001 |
 | [SearXNG](https://github.com/searxng/searxng) | Self-hosted metasearch (web grounding) | 8080 |
 | [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr) | Cloudflare bypass proxy for SearXNG | internal |
 | [Faster-Whisper](https://github.com/fedirz/faster-whisper-server) | Local speech-to-text | 8765 |
@@ -57,7 +79,24 @@ docker compose up -d
 ./status.sh
 ```
 
-On first launch, open http://localhost:3000 and create a local admin account.
+On first launch, open **http://localhost:3000** and create a local admin account. The dashboard is at **http://localhost:3001**.
+
+---
+
+## Web Search (SearXNG + Open WebUI)
+
+SearXNG is a self-hosted metasearch engine that queries Brave, DuckDuckGo, Google, Bing, and others simultaneously and deduplicates the results. It runs entirely locally — no search query leaves your machine.
+
+Open WebUI is wired directly to SearXNG via its internal Docker network (`searxng:8080`). When web search is active in a chat, Open WebUI sends the user's query to SearXNG's JSON API, injects the returned results into the model's context window, and the model answers with live web grounding.
+
+**To use web search in a chat:**
+1. Click the **+** icon in the message input bar
+2. Toggle **Web Search** on
+3. Ask anything — the model will search before answering and cite its sources
+
+To enable web search by default for all chats: Admin Panel → Settings → Web Search → toggle on.
+
+**Direct SearXNG access** at http://localhost:8080 gives you the full search UI with category tabs (General, Images, Videos, News, Science, Map) — useful for browsing results directly without going through a model.
 
 ---
 
@@ -65,7 +104,7 @@ On first launch, open http://localhost:3000 and create a local admin account.
 
 MLX-LM runs as a native server on port 5001, providing an OpenAI-compatible API optimized for Apple Silicon. It dynamically swaps models based on the request — only one model is loaded in memory at a time.
 
-Open WebUI connects to it as an OpenAI-compatible backend. Any model from `mlx-community` on HuggingFace can be used by specifying its ID in the API request. Models are downloaded on first use and cached in `~/.cache/huggingface/hub/`.
+Open WebUI connects to it as an OpenAI-compatible backend alongside Ollama. Both appear in the model selector — MLX models are prefixed with `mlx-community/`. Models are downloaded on first use and cached in `~/.cache/huggingface/hub/`.
 
 Edit `mlx-server.sh` to change the default model or server options. The LaunchAgent starts the server automatically on login.
 

@@ -46,10 +46,6 @@ outgoing:
   pool_connections: 100
   pool_maxsize: 20
   enable_http2: true
-  # FlareSolverr proxy — bypasses Cloudflare on protected news sites
-  proxies:
-    http: "http://flaresolverr:8191"
-    https: "http://flaresolverr:8191"
 
 engines:
   # --- General web (used by Open WebUI) ------------------------------------
