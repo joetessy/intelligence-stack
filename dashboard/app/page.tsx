@@ -5,6 +5,7 @@ import Header from "@/components/Header"
 import ServiceCard from "@/components/ServiceCard"
 import ModelList from "@/components/ModelList"
 import MLXModelList from "@/components/MLXModelList"
+import MCPServerList from "@/components/MCPServerList"
 import QuickLaunch from "@/components/QuickLaunch"
 import { SERVICES } from "@/lib/services"
 
@@ -29,6 +30,8 @@ const Page = () => {
           <ServiceCard key={service.id} service={service} animationDelay={i * 70} />
         ))}
       </div>
+
+      <MCPServerList />
 
       <div className="mt-10 grid grid-cols-1 lg:grid-cols-2 gap-6">
         <ModelList />

@@ -13,11 +13,11 @@ import {
 import type { ServiceConfig, ServiceStatus } from "@/types"
 
 const ICON_MAP: Record<string, LucideIcon> = {
-  "open-webui": MessageSquare,
-  searxng: Search,
+  "open-webui":  MessageSquare,
+  searxng:       Search,
   "whisper-stt": Mic,
-  "kokoro-tts": Volume2,
-  ollama: Cpu
+  "kokoro-tts":  Volume2,
+  ollama:        Cpu,
 }
 
 const getLatencyColor = (ms: number): string => {

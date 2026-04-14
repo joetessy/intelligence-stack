@@ -8,12 +8,14 @@ interface RouteContext {
 // When running in Docker, use internal service URLs from env vars.
 // Falls back to the public localhost URL for local dev.
 const SERVER_URLS: Record<string, string | undefined> = {
-  "open-webui": process.env.OPEN_WEBUI_URL,
-  searxng: process.env.SEARXNG_URL,
+  "open-webui":  process.env.OPEN_WEBUI_URL,
+  searxng:       process.env.SEARXNG_URL,
   "whisper-stt": process.env.WHISPER_URL,
-  "kokoro-tts": process.env.TTS_URL,
-  ollama: process.env.OLLAMA_URL,
+  "kokoro-tts":  process.env.TTS_URL,
+  ollama:        process.env.OLLAMA_URL,
 }
+
+const SERVER_HEADERS: Record<string, Record<string, string>> = {}
 
 export const GET = async (_request: NextRequest, { params }: RouteContext) => {
   const { service: serviceId } = await params
@@ -24,9 +26,11 @@ export const GET = async (_request: NextRequest, { params }: RouteContext) => {
   }
 
   const url = SERVER_URLS[serviceId] ?? config.healthUrl
+  const headers = SERVER_HEADERS[serviceId] ?? {}
   const start = Date.now()
   try {
     await fetch(url, {
+      headers,
       signal: AbortSignal.timeout(3000),
       cache: "no-store"
     })

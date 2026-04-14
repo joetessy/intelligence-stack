@@ -149,6 +149,25 @@ services:
     networks:
       - ai-stack
 
+  open-terminal:
+    image: ghcr.io/open-webui/open-terminal:latest
+    container_name: open-terminal
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8888:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf -H \"Authorization: Bearer $OPEN_TERMINAL_API_KEY\" http://localhost:8000/api/config > /dev/null"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    environment:
+      - OPEN_TERMINAL_API_KEY=${OPEN_TERMINAL_API_KEY}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - ai-stack
+
   dashboard:
     build: ./dashboard
     container_name: dashboard
@@ -170,6 +189,10 @@ services:
       - TTS_URL=http://openedai-speech:8000
       - OLLAMA_URL=http://host.docker.internal:11434
       - MLX_URL=http://host.docker.internal:5001
+      - MCP_FS_URL=http://host.docker.internal:8901
+      - MCP_MEM_URL=http://host.docker.internal:8902
+      - OPEN_TERMINAL_URL=http://open-terminal:8000
+      - OPEN_TERMINAL_KEY=${OPEN_TERMINAL_API_KEY}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:

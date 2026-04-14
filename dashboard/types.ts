@@ -11,6 +11,16 @@ export interface ServiceStatus {
   latencyMs: number
 }
 
+export interface MCPServerConfig {
+  id: string
+  name: string
+  description: string
+  port: number
+  healthUrl: string
+  openwebuiUrl: string
+  displayUrl: string
+}
+
 export interface OllamaModelDetails {
   format: string
   family: string
