@@ -37,6 +37,20 @@ services:
     networks:
       - ai-stack
 
+  playwright:
+    image: mcr.microsoft.com/playwright:v1.49.1-noble
+    container_name: playwright
+    restart: unless-stopped
+    command: /bin/sh -c "npx -y playwright@1.49.1 run-server --port 3000 --host 0.0.0.0"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/localhost/3000'"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      - ai-stack
+
   searxng:
     image: searxng/searxng:latest
     container_name: searxng
@@ -117,6 +131,11 @@ services:
       - ENABLE_WEB_SEARCH=true
       - WEB_SEARCH_ENGINE=searxng
       - SEARXNG_QUERY_URL=http://searxng:8080/search
+      - WEB_SEARCH_RESULT_COUNT=4
+      - WEB_SEARCH_CONCURRENT_REQUESTS=4
+      - WEB_LOADER_ENGINE=playwright
+      - PLAYWRIGHT_WS_URL=ws://playwright:3000/
+      - BYPASS_WEB_SEARCH_EMBEDDING_AND_RETRIEVAL=false
       - AUDIO_STT_ENGINE=openai
       - AUDIO_STT_OPENAI_API_BASE_URL=http://faster-whisper:8000/v1
       - AUDIO_STT_OPENAI_API_KEY=none
@@ -137,10 +156,15 @@ services:
       - OPENAI_API_BASE_URL=http://host.docker.internal:5001/v1
       - OPENAI_API_KEY=mlx-local
       - ENABLE_MODEL_FILTER=false
+      - ENABLE_PERSISTENT_CONFIG=true
+      - "TOOL_SERVER_CONNECTIONS=[{\"url\":\"http://host.docker.internal:8901/mcp\",\"path\":\"/\",\"type\":\"mcp\",\"auth_type\":\"none\",\"headers\":null,\"key\":\"\",\"config\":{\"enable\":true},\"info\":{\"id\":\"mcp-filesystem\",\"name\":\"Filesystem\",\"description\":\"Read & write files in ~/Documents, ~/Projects, ~/Downloads\"}}]"
+      - "TERMINAL_SERVER_CONNECTIONS=[{\"id\":\"open-terminal\",\"name\":\"Open Terminal\",\"enabled\":true,\"url\":\"http://open-terminal:8000\",\"path\":\"/openapi.json\",\"key\":\"${OPEN_TERMINAL_API_KEY}\",\"auth_type\":\"bearer\",\"config\":{}}]"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
       searxng:
+        condition: service_healthy
+      playwright:
         condition: service_healthy
       faster-whisper:
         condition: service_healthy
