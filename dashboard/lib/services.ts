@@ -7,8 +7,7 @@ const WHISPER_URL = process.env.WHISPER_URL ?? "http://localhost:8765"
 const TTS_URL = process.env.TTS_URL ?? "http://localhost:8880"
 const MLX_URL = process.env.MLX_URL ?? "http://localhost:5001"
 
-const MCP_FS_URL  = process.env.MCP_FS_URL  ?? "http://localhost:8901"
-const MCP_MEM_URL = process.env.MCP_MEM_URL ?? "http://localhost:8902"
+const MCP_FS_URL = process.env.MCP_FS_URL ?? "http://localhost:8901"
 
 export const MCP_SERVERS: readonly MCPServerConfig[] = [
   {
@@ -17,17 +16,8 @@ export const MCP_SERVERS: readonly MCPServerConfig[] = [
     description: "Read & write local files",
     port: 8901,
     healthUrl: MCP_FS_URL,
-    openwebuiUrl: "http://host.docker.internal:8901/sse",
-    displayUrl: "http://localhost:8901/sse",
-  },
-  {
-    id: "mcp-memory",
-    name: "Memory",
-    description: "Persistent knowledge graph",
-    port: 8902,
-    healthUrl: MCP_MEM_URL,
-    openwebuiUrl: "http://host.docker.internal:8902/sse",
-    displayUrl: "http://localhost:8902/sse",
+    openwebuiUrl: "http://host.docker.internal:8901/mcp",
+    displayUrl: "http://localhost:8901/mcp",
   },
 ]
 

@@ -91,9 +91,17 @@ port_open() { nc -z localhost "$1" 2>/dev/null; }
 echo ""
 echo "==> MCP Tool Servers"
 
+# Wait up to 60 s for the filesystem server (it may still be starting via LaunchAgent)
 MCP_SKIP=false
-port_open 8901 || { warn "Port 8901 (filesystem) not listening"; MCP_SKIP=true; }
-port_open 8902 || { warn "Port 8902 (memory) not listening"; MCP_SKIP=true; }
+ready=false
+for i in $(seq 1 30); do
+  if port_open 8901; then ready=true; break; fi
+  sleep 2
+done
+if ! $ready; then
+  warn "Port 8901 not reachable after 60 s — skipping MCP registration"
+  MCP_SKIP=true
+fi
 
 if ! $MCP_SKIP; then
   webui_post "/api/v1/configs/tool_servers" '{
@@ -111,28 +119,13 @@ if ! $MCP_SKIP; then
           "name": "Filesystem",
           "description": "Read & write files in ~/Documents, ~/Projects, ~/Downloads"
         }
-      },
-      {
-        "url": "http://host.docker.internal:8902/mcp",
-        "path": "/",
-        "type": "mcp",
-        "auth_type": "none",
-        "headers": null,
-        "key": "",
-        "config": {"enable": true},
-        "info": {
-          "id": "mcp-memory",
-          "name": "Memory",
-          "description": "Persistent knowledge graph across conversations"
-        }
       }
     ]
   }'
   ok "Filesystem server registered  →  http://host.docker.internal:8901/mcp"
-  ok "Memory server registered      →  http://host.docker.internal:8902/mcp"
-  echo "     To activate: Workspace → Models → (select model) → Tools → enable both"
+  echo "     To activate: Workspace → Models → (select model) → Tools → enable Filesystem"
 else
-  warn "Skipped — start MCP servers first: ./mcp-servers.sh"
+  warn "Skipped — start MCP server first: ./mcp-servers.sh"
 fi
 
 # ── Open Terminal ────────────────────────────────────────────────────────────

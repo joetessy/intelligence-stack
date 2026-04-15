@@ -71,7 +71,6 @@ Native on host:
 
 Optional (host-native):
   MCP Filesystem (8901)  file read/write for Open WebUI models
-  MCP Memory (8902)      persistent knowledge graph for Open WebUI models
 ```
 
 ## Services
@@ -132,6 +131,7 @@ Apple Silicon uses unified memory shared between MLX and Ollama. Large models ca
 | `mlx-server.sh` | MLX-LM server startup script |
 | `mcp-servers.sh` | MCP tool servers for Open WebUI (optional) |
 | `provision-webui.sh` | Registers MCP servers and Open Terminal with Open WebUI |
+| `com.intelligence-stack.provision-webui.plist` | LaunchAgent template — auto-provisions on login |
 | `status.sh` | Stack health dashboard |
 | `pin-embeddings.sh` | Pins an Ollama embedding model in memory for RAG |
 
@@ -150,6 +150,7 @@ Apple Silicon uses unified memory shared between MLX and Ollama. Large models ca
 | `~/Library/LaunchAgents/com.intelligence-stack.mlx-server.plist` | MLX-LM server on port 5001 |
 | `~/Library/LaunchAgents/com.intelligence-stack.pin-embeddings.plist` | Pin embedding model in Ollama |
 | `~/Library/LaunchAgents/com.intelligence-stack.mcp-servers.plist` | MCP tool servers on ports 8901/8902 (optional) |
+| `~/Library/LaunchAgents/com.intelligence-stack.provision-webui.plist` | Auto-provisions Open WebUI integrations on login (optional) |
 
 ---
 
@@ -221,9 +222,7 @@ The terminal runs inside Docker but has access to the host via `host.docker.inte
 
 ## MCP Tool Servers (optional)
 
-MCP (Model Context Protocol) servers give models in Open WebUI the ability to take real actions — reading and writing files, maintaining persistent memory across conversations.
-
-Two servers are included, both **off by default**. Enable them when you want models to access your local filesystem or remember things between chats.
+The filesystem MCP server gives models in Open WebUI the ability to read and write files on your Mac — ~/Documents, ~/Projects, and ~/Downloads. Off by default.
 
 **Prerequisite:** Node.js must be installed (`brew install node`).
 
@@ -236,25 +235,20 @@ Two servers are included, both **off by default**. Enable them when you want mod
 # Then register them in Open WebUI (auto-detects running servers)
 ./provision-webui.sh
 
-# Or auto-start on login with a LaunchAgent
+# Auto-start servers + auto-provision on every login
 cp com.intelligence-stack.mcp-servers.plist ~/Library/LaunchAgents/
+cp com.intelligence-stack.provision-webui.plist ~/Library/LaunchAgents/
 launchctl load ~/Library/LaunchAgents/com.intelligence-stack.mcp-servers.plist
+launchctl load ~/Library/LaunchAgents/com.intelligence-stack.provision-webui.plist
 ```
+
+The provision LaunchAgent re-registers the integrations every time you log in. This ensures they come back automatically after Open WebUI updates or container recreations, which can wipe the stored config.
 
 After provisioning, activate the tools for a model: **Workspace → Models → (select model) → Tools → enable Filesystem and Memory**.
 
 The dashboard (http://localhost:3001) shows live MCP server status and has copy buttons for the SSE URLs.
 
-### What each server provides
-
-| Server | Port | Capability |
-|--------|------|-----------|
-| Filesystem | 8901 | Read/write files in `~/Documents`, `~/Projects`, `~/Downloads` |
-| Memory | 8902 | Persistent knowledge graph — models can store and recall facts across conversations |
-
 ### Usage examples
-
-**Filesystem** — ask the model to interact with your local files:
 
 ```
 Read ~/Projects/my-app/main.py and explain what it does.
@@ -265,17 +259,3 @@ List the markdown files in ~/Documents/notes.
 ```
 Write a summary of our conversation to ~/Documents/ai-session.md.
 ```
-
-**Memory** — facts persist across conversations:
-
-```
-Remember that I prefer 2-space indentation and TypeScript strict mode.
-```
-```
-What do you remember about my coding preferences?
-```
-```
-Remember that my main project is the intelligence-stack repo at ~/Projects/intelligence-stack.
-```
-
-The memory server stores a knowledge graph that survives model restarts and new chat sessions.

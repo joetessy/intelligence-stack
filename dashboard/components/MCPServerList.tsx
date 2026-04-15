@@ -2,13 +2,12 @@
 
 import { useQuery } from "@tanstack/react-query"
 import { useState } from "react"
-import { Wrench, Copy, Check, FolderOpen, Brain } from "lucide-react"
+import { Wrench, Copy, Check, FolderOpen } from "lucide-react"
 import { MCP_SERVERS } from "@/lib/services"
 import type { MCPServerConfig, ServiceStatus } from "@/types"
 
 const ICON_MAP: Record<string, React.ElementType> = {
   "mcp-filesystem": FolderOpen,
-  "mcp-memory": Brain,
 }
 
 const CopyButton = ({ text, label }: { text: string; label: string }) => {
@@ -106,12 +105,12 @@ const MCPServerCard = ({ server }: { server: MCPServerConfig }) => {
       <div className="pt-3 border-t border-edge">
         {isOnline ? (
           <div>
-            <p className="font-mono text-[10px] text-ink-dim mb-1.5">Open WebUI SSE URL</p>
+            <p className="font-mono text-[10px] text-ink-dim mb-1.5">Open WebUI MCP URL</p>
             <div className="flex items-center gap-2">
               <span className="font-mono text-[10px] text-ink-muted truncate">
                 {server.displayUrl}
               </span>
-              <CopyButton text={server.openwebuiUrl} label={`Copy SSE URL for ${server.name}`} />
+              <CopyButton text={server.openwebuiUrl} label={`Copy MCP URL for ${server.name}`} />
             </div>
           </div>
         ) : (

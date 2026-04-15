@@ -1,16 +1,11 @@
 #!/usr/bin/env bash
-# mcp-servers.sh — MCP tool servers for Open WebUI
+# mcp-servers.sh — MCP tool server for Open WebUI
 #
-# Runs two MCP servers that Open WebUI can use as tools during chat:
+# Runs the filesystem MCP server that Open WebUI can use as a tool during chat:
 #   :8901  filesystem — read/write files in ~/Documents, ~/Projects, ~/Downloads
-#   :8902  memory     — persistent knowledge graph across conversations
-#
-# Register in Open WebUI: Admin Panel → Tools → Add Tool Server
-#   Filesystem: http://host.docker.internal:8901/sse
-#   Memory:     http://host.docker.internal:8902/sse
 #
 # Usage:
-#   ./mcp-servers.sh          run in foreground (Ctrl-C to stop both)
+#   ./mcp-servers.sh          run in foreground (Ctrl-C to stop)
 #   launchctl load ~/Library/LaunchAgents/com.intelligence-stack.mcp-servers.plist
 
 set -euo pipefail
@@ -24,18 +19,10 @@ npx -y supergateway \
   --outputTransport streamableHttp &
 FS_PID=$!
 
-echo "Starting MCP memory server on :8902..."
-npx -y supergateway \
-  --stdio "npx -y @modelcontextprotocol/server-memory" \
-  --port 8902 \
-  --outputTransport streamableHttp &
-MEM_PID=$!
-
-echo "MCP servers running (fs PID=$FS_PID  mem PID=$MEM_PID)"
+echo "MCP filesystem server running (PID=$FS_PID)"
 echo ""
-echo "Open WebUI → Admin Panel → Tools → Add Tool Server:"
+echo "Register in Open WebUI: Admin Panel → Settings → Connections → Tool Servers"
 echo "  http://host.docker.internal:8901/mcp"
-echo "  http://host.docker.internal:8902/mcp"
 
-trap "kill $FS_PID $MEM_PID 2>/dev/null; exit 0" INT TERM
+trap "kill $FS_PID 2>/dev/null; exit 0" INT TERM
 wait
