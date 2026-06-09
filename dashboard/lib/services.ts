@@ -27,7 +27,7 @@ export const SERVICES: readonly ServiceConfig[] = [
     name: "Open WebUI",
     description: "Chat interface",
     hostUrl: "http://localhost:3000",
-    healthUrl: `${OPEN_WEBUI_URL}`
+    healthUrl: `${OPEN_WEBUI_URL}/health`
   },
   {
     id: "searxng",
@@ -48,7 +48,7 @@ export const SERVICES: readonly ServiceConfig[] = [
     name: "openedai-speech",
     description: "Text-to-speech",
     hostUrl: "http://localhost:8880",
-    healthUrl: `${TTS_URL}`
+    healthUrl: `${TTS_URL}/v1/models`
   },
   {
     id: "ollama",

@@ -18,13 +18,15 @@
     <true/>
 
     <key>StandardOutPath</key>
-    <string>/tmp/mlx-server.log</string>
+    <string>/Users/yusuf/Library/Logs/intelligence-stack/mlx-server.log</string>
 
     <key>StandardErrorPath</key>
-    <string>/tmp/mlx-server.log</string>
+    <string>/Users/yusuf/Library/Logs/intelligence-stack/mlx-server.log</string>
 
     <key>EnvironmentVariables</key>
     <dict>
+        <!-- Python.org 3.13 must come first: that's where `pip install mlx-lm`
+             puts mlx_lm. Homebrew Python 3.14 doesn't have it. -->
         <key>PATH</key>
         <string>/Library/Frameworks/Python.framework/Versions/3.13/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
         <key>HOME</key>

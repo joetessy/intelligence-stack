@@ -12,9 +12,15 @@ set -euo pipefail
 
 ALLOWED_DIRS="$HOME/Documents $HOME/Projects $HOME/Downloads"
 
+# Pin both packages to specific versions so KeepAlive restarts don't have to
+# hit npm for a version-resolve round-trip. Bump these by hand when you want
+# to upgrade — `npm view <pkg> version` shows the latest.
+SUPERGATEWAY_VERSION="3.4.3"
+FS_MCP_VERSION="2026.1.14"
+
 echo "Starting MCP filesystem server on :8901..."
-npx -y supergateway \
-  --stdio "npx -y @modelcontextprotocol/server-filesystem $ALLOWED_DIRS" \
+npx -y "supergateway@${SUPERGATEWAY_VERSION}" \
+  --stdio "npx -y @modelcontextprotocol/server-filesystem@${FS_MCP_VERSION} $ALLOWED_DIRS" \
   --port 8901 \
   --outputTransport streamableHttp &
 FS_PID=$!

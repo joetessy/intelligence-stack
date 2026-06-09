@@ -7,6 +7,7 @@ export const GET = async () => {
       cache: "no-store",
       signal: AbortSignal.timeout(3000)
     })
+    if (!response.ok) return NextResponse.json({ object: "list", data: [] })
     const data = await response.json()
     return NextResponse.json(data)
   } catch {

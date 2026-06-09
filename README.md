@@ -6,7 +6,11 @@ A fully self-hosted, offline-capable AI stack on Apple Silicon. No accounts, no 
 
 - macOS with Apple Silicon (M-series chip)
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/)
-- [Ollama](https://ollama.com) installed natively
+- **Ollama via the official [Ollama.app](https://ollama.com/download)** —
+  *not* the Homebrew bottle. As of brew's ollama 0.30.6 the bottle ships
+  without `llama-server`, so `/api/embed` and `/api/chat` 500 on every
+  request. The official .app bundles everything correctly. If you previously
+  installed via brew, `brew uninstall ollama` and download the .app.
 - Python 3.13+ with `mlx-lm` installed (`pip install mlx-lm`)
 
 ## Setup
@@ -58,16 +62,19 @@ The dashboard is at **http://localhost:3001**.
 Docker:
   Open WebUI (3000)  ----->  SearXNG (8080)  ----->  FlareSolverr (internal)
        |                         search engine         cloudflare bypass
+       |                              |
+       |                              +------>  Playwright (internal)
+       |                                        JS-rendered page loader
        |
-       +--->  Faster-Whisper (8765)    speech-to-text
+       +--->  Faster-Whisper (8765)    speech-to-text (large-v3-turbo)
        +--->  openedai-speech (8880)   text-to-speech
        +--->  Open Terminal (8888)     web terminal (shell access)
 
-  Dashboard (3001)   health monitor for all services
+  Dashboard (3001)   health monitor + model browser
 
 Native on host:
   MLX-LM (5001)     Apple Silicon inference (OpenAI-compatible API)
-  Ollama (11434)    GGUF models + embeddings
+  Ollama (11434)    GGUF models + embeddings (bge-m3)
 
 Optional (host-native):
   MCP Filesystem (8901)  file read/write for Open WebUI models
@@ -131,9 +138,10 @@ Apple Silicon uses unified memory shared between MLX and Ollama. Large models ca
 | `mlx-server.sh` | MLX-LM server startup script |
 | `mcp-servers.sh` | MCP tool servers for Open WebUI (optional) |
 | `provision-webui.sh` | Registers MCP servers and Open Terminal with Open WebUI |
-| `com.intelligence-stack.provision-webui.plist` | LaunchAgent template — auto-provisions on login |
+| `com.intelligence-stack.*.plist` | LaunchAgent templates for mlx-server, mcp-servers, provision-webui, pin-embeddings |
 | `status.sh` | Stack health dashboard |
-| `pin-embeddings.sh` | Pins an Ollama embedding model in memory for RAG |
+| `pin-embeddings.sh` | Pins `bge-m3` in Ollama memory so RAG queries don't pay reload cost |
+| `backup.sh` | Snapshots open-webui-data volume + secrets to `~/Documents/intelligence-stack-backups/` |
 
 ### Environment variables
 
@@ -148,9 +156,12 @@ Apple Silicon uses unified memory shared between MLX and Ollama. Large models ca
 | Plist | Purpose |
 |-------|---------|
 | `~/Library/LaunchAgents/com.intelligence-stack.mlx-server.plist` | MLX-LM server on port 5001 |
-| `~/Library/LaunchAgents/com.intelligence-stack.pin-embeddings.plist` | Pin embedding model in Ollama |
-| `~/Library/LaunchAgents/com.intelligence-stack.mcp-servers.plist` | MCP tool servers on ports 8901/8902 (optional) |
+| `~/Library/LaunchAgents/com.intelligence-stack.ollama.plist` | Ollama (Ollama.app binary) with flash attention + q8 KV cache |
+| `~/Library/LaunchAgents/com.intelligence-stack.pin-embeddings.plist` | Pins `bge-m3` in Ollama so RAG doesn't pay reload cost |
+| `~/Library/LaunchAgents/com.intelligence-stack.mcp-servers.plist` | MCP filesystem server on port 8901 (optional) |
 | `~/Library/LaunchAgents/com.intelligence-stack.provision-webui.plist` | Auto-provisions Open WebUI integrations on login (optional) |
+
+LaunchAgent logs live in `~/Library/Logs/intelligence-stack/` (persists across reboots).
 
 ---
 
@@ -170,8 +181,11 @@ docker compose restart open-webui
 # Tail logs
 docker compose logs open-webui -f
 
-# MLX-LM logs
-tail -f /tmp/mlx-server.log
+# LaunchAgent logs (mlx, mcp, provision, pin-embeddings)
+tail -f ~/Library/Logs/intelligence-stack/mlx-server.log
+
+# Back up Open WebUI data + secrets
+./backup.sh --keep 7
 
 # Manually start/stop MLX-LM server
 ./mlx-server.sh
@@ -244,7 +258,7 @@ launchctl load ~/Library/LaunchAgents/com.intelligence-stack.provision-webui.pli
 
 The provision LaunchAgent re-registers the integrations every time you log in. This ensures they come back automatically after Open WebUI updates or container recreations, which can wipe the stored config.
 
-After provisioning, activate the tools for a model: **Workspace → Models → (select model) → Tools → enable Filesystem and Memory**.
+After provisioning, activate the tools for a model: **Workspace → Models → (select model) → Tools → enable Filesystem**.
 
 The dashboard (http://localhost:3001) shows live MCP server status and has copy buttons for the SSE URLs.
 

@@ -22,7 +22,10 @@
 services:
 
   flaresolverr:
-    image: ghcr.io/flaresolverr/flaresolverr:latest
+    # Pinned by digest so `docker compose up` is deterministic.
+    # To upgrade: `docker pull ghcr.io/flaresolverr/flaresolverr:latest`
+    # then update the @sha256 here to the new digest.
+    image: ghcr.io/flaresolverr/flaresolverr:latest@sha256:139dfee1c6f89249c8d665d1333a42e8ec74ec0a86bc6bb1c8461e10d3a66a47
     container_name: flaresolverr
     restart: unless-stopped
     healthcheck:
@@ -38,10 +41,14 @@ services:
       - ai-stack
 
   playwright:
-    image: mcr.microsoft.com/playwright:v1.49.1-noble
+    # Image tag and npx version MUST match — Playwright server/client wire format
+    # changes between minor releases. To upgrade: pick a new vX.Y.Z, bump BOTH
+    # the image tag and the npx version, refresh the @sha256 with:
+    #   docker manifest inspect mcr.microsoft.com/playwright:vX.Y.Z-noble | grep digest
+    image: mcr.microsoft.com/playwright:v1.60.0-noble@sha256:9bd26ad900bb5e0f4dee75839e957a89ae89c2b7ab1e76050e559790e946b948
     container_name: playwright
     restart: unless-stopped
-    command: /bin/sh -c "npx -y playwright@1.49.1 run-server --port 3000 --host 0.0.0.0"
+    command: /bin/sh -c "npx -y playwright@1.60.0 run-server --port 3000 --host 0.0.0.0"
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/localhost/3000'"]
       interval: 30s
@@ -52,7 +59,7 @@ services:
       - ai-stack
 
   searxng:
-    image: searxng/searxng:latest
+    image: searxng/searxng:latest@sha256:02d441bbb647b7be422d21041420115cddadac4644368f67c7c7f407bbe72e22
     container_name: searxng
     restart: unless-stopped
     ports:
@@ -75,7 +82,9 @@ services:
       - ai-stack
 
   faster-whisper:
-    image: fedirz/faster-whisper-server:latest-cpu
+    # fedirz only publishes -cpu and -cuda; -cpu is correct for Apple Silicon.
+    # CTranslate2 inside the image already uses ARM NEON optimizations.
+    image: fedirz/faster-whisper-server:latest-cpu@sha256:760e5e43d427dc6cfbbc4731934b908b7de9c7e6d5309c6a1f0c8c923a5b6030
     container_name: faster-whisper
     restart: unless-stopped
     ports:
@@ -85,14 +94,24 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 60s
+      start_period: 120s
     environment:
-      - WHISPER__MODEL=small.en
+      # large-v3-turbo: ~6x faster than large-v3 with near-equivalent quality.
+      # M4 Max + 48GB unified memory has plenty of headroom; ~1.6GB model.
+      # int8_float16: noticeably better transcription quality than int8 with
+      # nearly the same throughput on Apple Silicon CPU (CTranslate2 + ARM NEON).
+      - WHISPER__MODEL=Systran/faster-whisper-large-v3-turbo
+      - WHISPER__COMPUTE_TYPE=int8_float16
+      - WHISPER__INFERENCE_DEVICE=cpu
+      # Gradio (bundled in the faster-whisper-server image) fetches
+      # https://api.gradio.app/gradio-messaging on startup. Kill it.
+      - GRADIO_ANALYTICS_ENABLED=False
+      - HF_HUB_OFFLINE=0  # model still needs to be pulled on first run; flip to 1 after
     networks:
       - ai-stack
 
   openedai-speech:
-    image: ghcr.io/matatonic/openedai-speech:latest
+    image: ghcr.io/matatonic/openedai-speech:latest@sha256:3ef4f857d5a757cfe8e9b61185df1bd3c52c45f950716a54e4399c27c3e91396
     container_name: openedai-speech
     restart: unless-stopped
     ports:
@@ -113,7 +132,7 @@ services:
       - ai-stack
 
   open-webui:
-    image: ghcr.io/open-webui/open-webui:main
+    image: ghcr.io/open-webui/open-webui:main@sha256:7f1b0a1a50cfbac23da3b16f96bc968fd757b26dc9e54e93813d61768ea9184e
     container_name: open-webui
     restart: unless-stopped
     ports:
@@ -131,15 +150,19 @@ services:
       - ENABLE_WEB_SEARCH=true
       - WEB_SEARCH_ENGINE=searxng
       - SEARXNG_QUERY_URL=http://searxng:8080/search
-      - WEB_SEARCH_RESULT_COUNT=4
-      - WEB_SEARCH_CONCURRENT_REQUESTS=4
+      # Tuned for M4 Max + 48GB. With 32K-context MLX models, skip the
+      # embed-then-retrieve hop and dump search results straight into context.
+      - WEB_SEARCH_RESULT_COUNT=8
+      - WEB_SEARCH_CONCURRENT_REQUESTS=8
       - WEB_LOADER_ENGINE=playwright
       - PLAYWRIGHT_WS_URL=ws://playwright:3000/
-      - BYPASS_WEB_SEARCH_EMBEDDING_AND_RETRIEVAL=false
+      - BYPASS_WEB_SEARCH_EMBEDDING_AND_RETRIEVAL=true
       - AUDIO_STT_ENGINE=openai
       - AUDIO_STT_OPENAI_API_BASE_URL=http://faster-whisper:8000/v1
       - AUDIO_STT_OPENAI_API_KEY=none
-      - AUDIO_STT_MODEL=small.en
+      - AUDIO_STT_MODEL=Systran/faster-whisper-large-v3-turbo
+      # WebUI offers a "transcription_model" pick at the user level too; this
+      # is the server-side default.
       - AUDIO_TTS_ENGINE=openai
       - AUDIO_TTS_OPENAI_API_BASE_URL=http://openedai-speech:8000/v1
       - AUDIO_TTS_OPENAI_API_KEY=none
@@ -147,16 +170,54 @@ services:
       - AUDIO_TTS_VOICE=nova
       - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY}
       - ENABLE_API_KEYS=true
+      # Open WebUI is on :3000, dashboard on :3001. Anything else is suspicious.
+      # Quiets the startup "CORS_ALLOW_ORIGIN IS SET TO '*'" warning.
+      # IMPORTANT: separator is SEMICOLON, not comma — open-webui splits on ';'.
+      # Using ',' silently produces a single invalid origin and blocks WS.
+      - CORS_ALLOW_ORIGIN=http://localhost:3000;http://localhost:3001
+      # langchain (used by Open WebUI's web loader) warns when this is missing.
+      - USER_AGENT=intelligence-stack-open-webui/1.0
+      # OFFLINE_MODE blocks every outbound update/version check, on top of the
+      # individual analytics opt-outs below. Matches the "no cloud" promise.
+      - OFFLINE_MODE=true
       - SCARF_NO_ANALYTICS=true
       - DO_NOT_TRACK=true
       - ANONYMIZED_TELEMETRY=false
       - RAG_EMBEDDING_ENGINE=ollama
-      - RAG_EMBEDDING_MODEL=nomic-embed-text
+      # bge-m3: multilingual, dense+sparse, ~8K context, materially better
+      # recall than nomic-embed-text on real RAG workloads.
+      - RAG_EMBEDDING_MODEL=bge-m3
       - RAG_OLLAMA_BASE_URL=http://host.docker.internal:11434
+      # Tuned for bge-m3 (8K embed context) on M4 Max. Larger chunks preserve
+      # more context per retrieval; higher top-k lets the model see more
+      # candidates without an expensive reranker round-trip.
+      - CHUNK_SIZE=1500
+      - CHUNK_OVERLAP=200
+      - RAG_TOP_K=6
+      - PDF_EXTRACT_IMAGES=true
+      # bge-m3 is one of the few embedding models trained for BOTH dense
+      # similarity AND sparse (lexical) matching. Hybrid search combines the
+      # two — measurably better recall on technical/proper-noun-heavy queries
+      # that pure cosine misses. Negligible cost since bge-m3 produces both
+      # vectors in a single pass.
+      - ENABLE_RAG_HYBRID_SEARCH=true
       - OPENAI_API_BASE_URL=http://host.docker.internal:5001/v1
       - OPENAI_API_KEY=mlx-local
       - ENABLE_MODEL_FILTER=false
       - ENABLE_PERSISTENT_CONFIG=true
+      # Title + tag + search-query generation default to the chat model. With a
+      # 27B chat model and ENABLE_SEARCH_QUERY_GENERATION=true (default), every
+      # web search pays a big-model prefill just to rewrite the query. Point
+      # TASK_MODEL_EXTERNAL at a small fast model to make these cheap.
+      #
+      # Pointed at qwen2.5-coder:1.5b-base (already pulled, 986MB). Lives in
+      # Ollama so it doesn't fight MLX for the unified-memory slot. Bump if you
+      # find a 3-4B Qwen3 chat-tuned variant — the coder-base model is small
+      # and instruction-light but more than enough for 5-token chat titles.
+      - TASK_MODEL_EXTERNAL=qwen2.5-coder:1.5b-base
+      # Alternative: disable auto-generation entirely if you don't use it.
+      # - ENABLE_TITLE_GENERATION=false
+      # - ENABLE_TAGS_GENERATION=false
       - "TOOL_SERVER_CONNECTIONS=[{\"url\":\"http://host.docker.internal:8901/mcp\",\"path\":\"/\",\"type\":\"mcp\",\"auth_type\":\"none\",\"headers\":null,\"key\":\"\",\"config\":{\"enable\":true},\"info\":{\"id\":\"mcp-filesystem\",\"name\":\"Filesystem\",\"description\":\"Read & write files in ~/Documents, ~/Projects, ~/Downloads\"}}]"
       - "TERMINAL_SERVER_CONNECTIONS=[{\"id\":\"open-terminal\",\"name\":\"Open Terminal\",\"enabled\":true,\"url\":\"http://open-terminal:8000\",\"path\":\"/openapi.json\",\"key\":\"${OPEN_TERMINAL_API_KEY}\",\"auth_type\":\"bearer\",\"config\":{}}]"
     extra_hosts:
@@ -174,13 +235,15 @@ services:
       - ai-stack
 
   open-terminal:
-    image: ghcr.io/open-webui/open-terminal:latest
+    image: ghcr.io/open-webui/open-terminal:latest@sha256:cf0ad7e309b3202b384560e92782b116e955c9424d6c000efe2fa7ee2608f706
     container_name: open-terminal
     restart: unless-stopped
     ports:
       - "127.0.0.1:8888:8000"
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf -H \"Authorization: Bearer $OPEN_TERMINAL_API_KEY\" http://localhost:8000/api/config > /dev/null"]
+      # $$ escapes the $ so Docker Compose passes it through and the shell
+      # inside the container expands OPEN_TERMINAL_API_KEY from its own env.
+      test: ["CMD-SHELL", "curl -sf -H \"Authorization: Bearer $$OPEN_TERMINAL_API_KEY\" http://localhost:8000/api/config > /dev/null"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -199,7 +262,10 @@ services:
     ports:
       - "127.0.0.1:3001:3001"
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/ > /dev/null"]
+      # Use 127.0.0.1 explicitly: Alpine BusyBox wget resolves "localhost" to
+      # ::1 first, and Next.js standalone (HOSTNAME=0.0.0.0) only binds IPv4 —
+      # the v6 attempt errored "Connection refused" and never fell back.
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3001/ > /dev/null"]
       interval: 30s
       timeout: 5s
       retries: 3

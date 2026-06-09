@@ -9,9 +9,8 @@
 use_default_settings: true
 
 server:
-  # Overridden at runtime by SEARXNG_SECRET env var (set in .env → docker-compose.yml).
+  # secret_key comes from SEARXNG_SECRET env var (set in .env → docker-compose.yml).
   # Generate with: openssl rand -hex 32
-  secret_key: "REPLACE_ME_WITH_OPENSSL_RAND_HEX_32"
   bind_address: "0.0.0.0"
   port: 8080
 
@@ -114,3 +113,20 @@ engines:
   - name: google scholar
     disabled: false
     categories: [science]
+
+  # --- High-signal additions for an intelligence-stack workload --------------
+  - name: hackernews
+    disabled: false
+    categories: [general, it]
+
+  - name: github
+    disabled: false
+    categories: [general, it]
+
+  - name: reddit
+    disabled: false
+    categories: [general, social media]
+
+  - name: wolframalpha
+    disabled: false
+    categories: [general, science]

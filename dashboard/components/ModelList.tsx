@@ -46,21 +46,31 @@ interface ModelRowProps {
   model: OllamaModel
 }
 
-const ModelRow = ({ model }: ModelRowProps) => (
-  <tr className="border-b border-edge hover:bg-card-hover transition-colors group">
-    <td className="py-3 pl-4 pr-4 min-w-0">
-      <span className="font-mono text-xs text-ink block truncate">{model.name}</span>
-    </td>
-    <td className="py-3 pr-4 shrink-0">
-      <span className="font-mono text-xs text-ink-muted">{formatBytes({ bytes: model.size })}</span>
-    </td>
-    <td className="py-3 pr-4 text-right shrink-0">
-      <span className="opacity-0 group-hover:opacity-100 transition-opacity">
-        <CopyButton text={model.name} />
-      </span>
-    </td>
-  </tr>
-)
+const ModelRow = ({ model }: ModelRowProps) => {
+  const family = model.details?.family
+  const paramSize = model.details?.parameter_size
+  return (
+    <tr className="border-b border-edge hover:bg-card-hover transition-colors group">
+      <td className="py-3 pl-4 pr-4 min-w-0">
+        <span className="font-mono text-xs text-ink block truncate">{model.name}</span>
+        {(family || paramSize) && (
+          <div className="mt-0.5 flex items-center gap-1.5">
+            {family && <span className="font-mono text-[10px] text-ink-dim">{family}</span>}
+            {paramSize && <span className="font-mono text-[10px] text-ink-dim">{paramSize}</span>}
+          </div>
+        )}
+      </td>
+      <td className="py-3 pr-4 shrink-0">
+        <span className="font-mono text-xs text-ink-muted">{formatBytes({ bytes: model.size })}</span>
+      </td>
+      <td className="py-3 pr-4 text-right shrink-0">
+        <span className="opacity-0 group-hover:opacity-100 transition-opacity">
+          <CopyButton text={model.name} />
+        </span>
+      </td>
+    </tr>
+  )
+}
 
 const ModelList = () => {
   const { data, isLoading } = useQuery<OllamaTagsResponse>({

@@ -157,5 +157,17 @@ else
   echo "     Access it via the terminal icon in the Open WebUI sidebar"
 fi
 
+# ── Python plugins (functions + tools) ───────────────────────────────────────
+echo ""
+echo "==> Open WebUI Python plugins"
+
+if [[ -x "$SCRIPT_DIR/install-plugins.py" ]]; then
+  # install-plugins.py reads OPEN_WEBUI_URL + OPENWEBUI_API_KEY from env.
+  OPEN_WEBUI_URL="$WEBUI_URL" OPENWEBUI_API_KEY="$API_KEY" \
+    "$SCRIPT_DIR/install-plugins.py" || warn "Plugin install reported errors (see above)"
+else
+  warn "install-plugins.py not found or not executable — skipping"
+fi
+
 echo ""
 echo "Done. Open WebUI at $WEBUI_URL"

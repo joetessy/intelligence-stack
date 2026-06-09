@@ -3,25 +3,23 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.intelligence-stack.mcp-servers</string>
+    <string>com.intelligence-stack.pin-embeddings</string>
 
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
-        <string>/Users/yusuf/Projects/intelligence-stack/mcp-servers.sh</string>
+        <string>/Users/yusuf/Projects/intelligence-stack/pin-embeddings.sh</string>
     </array>
 
+    <!-- Run once at login. Idempotent; no KeepAlive. -->
     <key>RunAtLoad</key>
     <true/>
 
-    <key>KeepAlive</key>
-    <true/>
-
     <key>StandardOutPath</key>
-    <string>/Users/yusuf/Library/Logs/intelligence-stack/mcp-servers.log</string>
+    <string>/Users/yusuf/Library/Logs/intelligence-stack/pin-embeddings.log</string>
 
     <key>StandardErrorPath</key>
-    <string>/Users/yusuf/Library/Logs/intelligence-stack/mcp-servers.log</string>
+    <string>/Users/yusuf/Library/Logs/intelligence-stack/pin-embeddings.log</string>
 
     <key>EnvironmentVariables</key>
     <dict>

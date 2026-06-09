@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.intelligence-stack.ollama</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <!-- Use the official Ollama.app binary, NOT brew's (the brew bottle
+             0.30.6 ships without llama-server and 500s on every /api/embed). -->
+        <string>/Applications/Ollama.app/Contents/Resources/ollama</string>
+        <string>serve</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/yusuf/Library/Logs/intelligence-stack/ollama.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/yusuf/Library/Logs/intelligence-stack/ollama.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>HOME</key>
+        <string>/Users/yusuf</string>
+        <!-- Flash attention: 10-30% throughput uplift on attention-heavy
+             workloads. Required for some quantized KV caches. -->
+        <key>OLLAMA_FLASH_ATTENTION</key>
+        <string>1</string>
+        <!-- Q8 KV cache: halves K/V memory vs default fp16, ~0% quality loss
+             on most models. Critical for long-context use on 48GB unified mem. -->
+        <key>OLLAMA_KV_CACHE_TYPE</key>
+        <string>q8_0</string>
+        <!-- Kill Ollama Cloud features (remote inference + cloud-side search). -->
+        <key>OLLAMA_NO_CLOUD</key>
+        <string>1</string>
+    </dict>
+</dict>
+</plist>

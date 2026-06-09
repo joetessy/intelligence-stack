@@ -11,15 +11,26 @@
         <string>/Users/yusuf/Projects/intelligence-stack/provision-webui.sh</string>
     </array>
 
-    <!-- Run once at login. No KeepAlive — this is a one-shot provisioner. -->
+    <!-- Run at login, then re-run only on non-zero exit (e.g. Open WebUI
+         wasn't ready in time). Once provisioning succeeds, launchd stops. -->
     <key>RunAtLoad</key>
     <true/>
 
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+
+    <!-- Wait 60s between retries so we don't spin tightly while Docker boots. -->
+    <key>ThrottleInterval</key>
+    <integer>60</integer>
+
     <key>StandardOutPath</key>
-    <string>/tmp/provision-webui.log</string>
+    <string>/Users/yusuf/Library/Logs/intelligence-stack/provision-webui.log</string>
 
     <key>StandardErrorPath</key>
-    <string>/tmp/provision-webui.log</string>
+    <string>/Users/yusuf/Library/Logs/intelligence-stack/provision-webui.log</string>
 
     <key>EnvironmentVariables</key>
     <dict>

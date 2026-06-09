@@ -25,7 +25,7 @@ echo ""
 # Docker services
 # ---------------------------------------------------------------------------
 echo -e "${BOLD}Docker Services${RESET}"
-for svc in open-webui searxng flaresolverr faster-whisper openedai-speech; do
+for svc in open-webui dashboard searxng flaresolverr playwright faster-whisper openedai-speech open-terminal; do
     status=$(docker inspect -f '{{.State.Status}}' "$svc" 2>/dev/null)
     if [ "$status" = "running" ]; then
         ok "$svc"
