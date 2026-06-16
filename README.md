@@ -6,11 +6,18 @@ A fully self-hosted, offline-capable AI stack on Apple Silicon. No accounts, no 
 
 - macOS with Apple Silicon (M-series chip)
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/)
-- **Ollama via the official [Ollama.app](https://ollama.com/download)** —
-  *not* the Homebrew bottle. As of brew's ollama 0.30.6 the bottle ships
-  without `llama-server`, so `/api/embed` and `/api/chat` 500 on every
-  request. The official .app bundles everything correctly. If you previously
-  installed via brew, `brew uninstall ollama` and download the .app.
+- **llama.cpp + llama-swap** for GGUF model inference and embeddings:
+  ```bash
+  brew install llama.cpp                       # llama-server, llama-cli, llama-mtmd-cli
+  # llama-swap: the multi-model hot-swap proxy. Prebuilt binary (most reliable):
+  #   download llama-swap_<ver>_darwin_arm64.tar.gz from
+  #   github.com/mostlygeek/llama-swap/releases, then install the binary to
+  #   /opt/homebrew/bin. (Homebrew tap also exists but builds from source.)
+  ```
+  GGUF models live in `~/models` as `<name>.gguf` (+ `<name>.mmproj.gguf` for
+  vision). llama-swap serves them on http://localhost:9292 over the OpenAI API
+  and hot-swaps them on demand; what's served is declared in
+  `llama-swap/config.yaml`.
 - Python 3.13+ with `mlx-lm` installed (`pip install mlx-lm`)
 
 ## Setup
@@ -23,8 +30,8 @@ cp .env.example .env
 # 2. Start Docker services
 docker compose up -d
 
-# 3. MLX-LM starts automatically via LaunchAgent
-#    Manual start if needed: ./mlx-server.sh
+# 3. MLX-LM and llama-swap start automatically via LaunchAgents
+#    Manual: ./mlx-server.sh  |  launchctl load ~/Library/LaunchAgents/com.intelligence-stack.llama-swap.plist
 
 # 4. Open http://localhost:3000 and create an admin account
 
@@ -50,7 +57,7 @@ The dashboard is at **http://localhost:3001**.
 | | |
 |---|---|
 | ![Open WebUI](docs/webui.png) | ![Dashboard](docs/dashboard.png) |
-| **Open WebUI** — chat interface with all local models (Ollama + MLX) | **Dashboard** — live service health and model browser |
+| **Open WebUI** — chat interface with all local models (llama.cpp + MLX) | **Dashboard** — live service health and model browser |
 | ![SearXNG](docs/searchxng.png) | ![Status](docs/status_command.png) |
 | **SearXNG** — self-hosted metasearch with category tabs | **`./status.sh`** — terminal health check |
 
@@ -73,8 +80,9 @@ Docker:
   Dashboard (3001)   health monitor + model browser
 
 Native on host:
-  MLX-LM (5001)     Apple Silicon inference (OpenAI-compatible API)
-  Ollama (11434)    GGUF models + embeddings (bge-m3)
+  MLX-LM (5001)       Apple Silicon inference (OpenAI-compatible API)
+  llama-swap (9292)   llama.cpp GGUF models + embeddings (bge-m3), hot-swapped
+                      on demand behind one OpenAI-compatible endpoint
 
 Optional (host-native):
   MCP Filesystem (8901)  file read/write for Open WebUI models
@@ -92,7 +100,7 @@ Optional (host-native):
 | [openedai-speech](https://github.com/matatonic/openedai-speech) | Local Piper-based text-to-speech | 8880 |
 | [Open Terminal](https://github.com/open-webui/open-terminal) | Web-based terminal with shell access | 8888 |
 | [MLX-LM](https://github.com/ml-explore/mlx-lm) | Apple Silicon optimized inference (OpenAI-compatible API) | 5001 |
-| [Ollama](https://ollama.com) | GGUF model inference + embeddings | 11434 |
+| [llama.cpp](https://github.com/ggml-org/llama.cpp) + [llama-swap](https://github.com/mostlygeek/llama-swap) | GGUF model inference + embeddings, multi-model hot-swap | 9292 |
 
 ---
 
@@ -117,13 +125,13 @@ To enable web search by default for all chats: Admin Panel → Settings → Web 
 
 MLX-LM runs as a native server on port 5001, providing an OpenAI-compatible API optimized for Apple Silicon. It dynamically swaps models based on the request — only one model is loaded in memory at a time.
 
-Open WebUI connects to it as an OpenAI-compatible backend alongside Ollama. Both appear in the model selector — MLX models are prefixed with `mlx-community/`. Models are downloaded on first use and cached in `~/.cache/huggingface/hub/`.
+Open WebUI connects to it as an OpenAI-compatible backend alongside llama-swap (llama.cpp). Both appear in the model selector — MLX models are prefixed with `mlx-community/`. Models are downloaded on first use and cached in `~/.cache/huggingface/hub/`.
 
 Edit `mlx-server.sh` to change the default model or server options. The LaunchAgent starts the server automatically on login.
 
 ### Memory management
 
-Apple Silicon uses unified memory shared between MLX and Ollama. Large models cannot run simultaneously. Ollama auto-unloads models after 5 minutes of inactivity (configured in `~/.ollama/config.json`). MoE (mixture-of-experts) models use significantly less memory than their parameter count suggests.
+Apple Silicon uses unified memory shared between MLX and llama-swap. Large models cannot all run simultaneously. llama-swap unloads idle chat models after 5 minutes (`globalTTL: 300` in `llama-swap/config.yaml`) while keeping the embedding and task models pinned (the `always-on` group, `ttl: 0`). MoE (mixture-of-experts) models use significantly less memory than their parameter count suggests.
 
 ---
 
@@ -136,11 +144,14 @@ Apple Silicon uses unified memory shared between MLX and Ollama. Large models ca
 | `docker-compose.yml` | Docker service definitions |
 | `searxng/settings.yml` | SearXNG engines, timeouts, proxy config |
 | `mlx-server.sh` | MLX-LM server startup script |
+| `llama-swap/config.yaml` | llama.cpp models served + hot-swap/pin policy — the source of truth for what's available on :9292 |
+| `bin/llm` | `ollama run`-style CLI (symlinked to `~/.local/bin/llm`) |
+| `migrate-ollama-gguf.py`, `verify-models.sh` | One-time Ollama→llama.cpp migration: clone GGUFs out of Ollama's blob store and verify they load |
 | `mcp-servers.sh` | MCP tool servers for Open WebUI (optional) |
 | `provision-webui.sh` | Registers MCP servers and Open Terminal with Open WebUI |
-| `com.intelligence-stack.*.plist` | LaunchAgent templates for mlx-server, mcp-servers, provision-webui, pin-embeddings |
+| `com.intelligence-stack.*.plist` | LaunchAgent templates for mlx-server, llama-swap, mcp-servers, provision-webui, pin-embeddings |
 | `status.sh` | Stack health dashboard |
-| `pin-embeddings.sh` | Pins `bge-m3` in Ollama memory so RAG queries don't pay reload cost |
+| `pin-embeddings.sh` | Warms `bge-m3` in llama-swap at login (pinning itself is declared in `llama-swap/config.yaml`) |
 | `backup.sh` | Snapshots open-webui-data volume + secrets to `~/Documents/intelligence-stack-backups/` |
 
 ### Environment variables
@@ -156,8 +167,8 @@ Apple Silicon uses unified memory shared between MLX and Ollama. Large models ca
 | Plist | Purpose |
 |-------|---------|
 | `~/Library/LaunchAgents/com.intelligence-stack.mlx-server.plist` | MLX-LM server on port 5001 |
-| `~/Library/LaunchAgents/com.intelligence-stack.ollama.plist` | Ollama (Ollama.app binary) with flash attention + q8 KV cache |
-| `~/Library/LaunchAgents/com.intelligence-stack.pin-embeddings.plist` | Pins `bge-m3` in Ollama so RAG doesn't pay reload cost |
+| `~/Library/LaunchAgents/com.intelligence-stack.llama-swap.plist` | llama-swap on port 9292 (llama.cpp, flash attention + q8 KV cache) |
+| `~/Library/LaunchAgents/com.intelligence-stack.pin-embeddings.plist` | Warms `bge-m3` in llama-swap at login |
 | `~/Library/LaunchAgents/com.intelligence-stack.mcp-servers.plist` | MCP filesystem server on port 8901 (optional) |
 | `~/Library/LaunchAgents/com.intelligence-stack.provision-webui.plist` | Auto-provisions Open WebUI integrations on login (optional) |
 
@@ -193,6 +204,15 @@ launchctl unload ~/Library/LaunchAgents/com.intelligence-stack.mlx-server.plist
 
 # Update all Docker images
 docker compose pull && docker compose up -d
+
+# Run a model in the terminal (ollama-run style)
+llm                       # list models
+llm llama3.1-8b "hello"   # one-shot answer (via the shared llama-swap server)
+llm qwen2.5-7b            # interactive chat REPL
+llm ps                    # which models are loaded in memory
+
+# Restart llama-swap (it also hot-reloads config.yaml via --watch-config)
+launchctl kickstart -k gui/$(id -u)/com.intelligence-stack.llama-swap
 ```
 
 ---

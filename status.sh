@@ -60,31 +60,34 @@ fi
 echo ""
 
 # ---------------------------------------------------------------------------
-# Ollama
+# llama-swap (llama.cpp)
 # ---------------------------------------------------------------------------
-echo -e "${BOLD}Ollama${RESET} ${DIM}(port 11434)${RESET}"
-OLLAMA_PS=$(curl -s --connect-timeout 2 http://localhost:11434/api/ps 2>/dev/null)
-if [ $? -eq 0 ]; then
+echo -e "${BOLD}llama-swap${RESET} ${DIM}(llama.cpp, port 9292)${RESET}"
+LS_MODELS=$(curl -s --connect-timeout 2 http://localhost:9292/v1/models 2>/dev/null)
+if [ $? -eq 0 ] && echo "$LS_MODELS" | python3 -c "import sys,json; json.load(sys.stdin)" 2>/dev/null; then
     ok "Running"
-    LOADED=$(echo "$OLLAMA_PS" | python3 -c "
+    LOADED=$(curl -s --connect-timeout 2 http://localhost:9292/running 2>/dev/null | python3 -c "
 import sys, json
-data = json.load(sys.stdin)
-models = data.get('models', [])
+models = json.load(sys.stdin).get('running', [])
 if not models:
     print('    (no models loaded)')
 else:
     for m in models:
-        size_gb = m.get('size_vram', 0) / 1e9
-        print(f'    {m[\"name\"]} ({size_gb:.1f}GB)')
+        print(f'    {m[\"model\"]} ({m.get(\"state\",\"?\")})')
 " 2>/dev/null)
     echo -e "  ${DIM}Loaded in memory:${RESET}"
     echo "$LOADED"
 
-    INSTALLED=$(ollama list 2>/dev/null | tail -n +2 | awk '{printf "    %-30s %s\n", $1, $3" "$4}')
-    echo -e "  ${DIM}Installed:${RESET}"
-    echo "$INSTALLED"
+    AVAIL=$(echo "$LS_MODELS" | python3 -c "
+import sys, json
+for m in json.load(sys.stdin).get('data', []):
+    print(f'    {m[\"id\"]}')
+" 2>/dev/null)
+    echo -e "  ${DIM}Available:${RESET}"
+    echo "$AVAIL"
 else
     fail "Not running"
+    echo -e "  ${DIM}Start: launchctl load ~/Library/LaunchAgents/com.intelligence-stack.llama-swap.plist${RESET}"
 fi
 echo ""
 
@@ -131,6 +134,6 @@ echo -e "${BOLD}Quick Links${RESET}"
 echo -e "  Open WebUI    ${CYAN}http://localhost:3000${RESET}"
 echo -e "  SearXNG       ${CYAN}http://localhost:8080${RESET}"
 echo -e "  MLX-LM API    ${CYAN}http://localhost:5001/v1/models${RESET}"
-echo -e "  Ollama API    ${CYAN}http://localhost:11434${RESET}"
+echo -e "  llama.cpp API ${CYAN}http://localhost:9292/v1/models${RESET}"
 echo -e "  MLX logs      ${DIM}/tmp/mlx-server.log${RESET}"
 echo ""

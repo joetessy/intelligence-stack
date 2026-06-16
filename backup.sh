@@ -92,9 +92,14 @@ cp "$SCRIPT_DIR/docker-compose.yml" "$DEST/docker-compose.yml"
 cp -R "$SCRIPT_DIR/searxng" "$DEST/searxng"
 ok "compose + searxng config saved"
 
-# --- Ollama model list (so a restore knows what to pull) ---------------------
-if curl -sf --connect-timeout 2 http://localhost:11434/api/tags > "$DEST/ollama-models.json" 2>/dev/null; then
-  ok "ollama-models.json saved"
+# --- llama-swap model list (so a restore knows what should be served) --------
+if curl -sf --connect-timeout 2 http://localhost:9292/v1/models > "$DEST/llama-swap-models.json" 2>/dev/null; then
+  ok "llama-swap-models.json saved"
+fi
+# llama-swap config is the source of truth for what's served — snapshot it too.
+if [[ -f "$SCRIPT_DIR/llama-swap/config.yaml" ]]; then
+  cp "$SCRIPT_DIR/llama-swap/config.yaml" "$DEST/llama-swap-config.yaml"
+  ok "llama-swap-config.yaml saved"
 fi
 
 # --- Prune old backups -------------------------------------------------------

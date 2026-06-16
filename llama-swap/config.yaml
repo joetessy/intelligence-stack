@@ -1,0 +1,185 @@
+# =============================================================================
+# llama-swap — multi-model, OpenAI-compatible proxy for the Intelligence Stack
+#
+# Replaces Ollama. Hot-swaps llama.cpp (llama-server) instances behind ONE
+# endpoint so Open WebUI and the CLI see every model at a single URL, loading
+# them on demand and unloading after idle — the behaviour Ollama provided.
+#
+#   Endpoint : http://127.0.0.1:9292/v1   (chat, completions, embeddings)
+#   Models   : GET http://127.0.0.1:9292/v1/models
+#   Web UI   : http://127.0.0.1:9292/ui
+#   Logs     : ~/Library/Logs/intelligence-stack/llama-swap.log
+#   Service  : com.intelligence-stack.llama-swap  (launchd, see the .plist)
+#
+# Tuning carried over verbatim from the old Ollama LaunchAgent:
+#   --flash-attn on          ← OLLAMA_FLASH_ATTENTION=1
+#   --cache-type-k/-v q8_0   ← OLLAMA_KV_CACHE_TYPE=q8_0  (needs flash-attn)
+#   ttl: 300 (globalTTL)     ← Ollama's 5-minute keep_alive
+#   bge-m3 + task model pinned (ttl 0, persistent group) ← pin-embeddings.sh
+#
+# NOTE: --listen is a CLI flag (set in the .plist), NOT a config key.
+# =============================================================================
+
+healthCheckTimeout: 300        # big models can take a while to load on first hit
+logLevel: info
+startPort: 9300                # per-model upstream ports auto-assigned from here
+globalTTL: 300                 # default: unload a model after 5 min idle
+
+macros:
+  models_dir: "${env.HOME}/models"
+  default_ctx: 16384
+
+  # Shared llama-server invocation for chat / vision models. `>` folds this to a
+  # single line. Per-model `cmd` appends -m (and --mmproj for vision).
+  #   --jinja enables native tool/function calling (MCP filesystem, terminal).
+  server-chat: >
+    /opt/homebrew/bin/llama-server
+    --port ${PORT}
+    --host 127.0.0.1
+    --flash-attn on
+    --cache-type-k q8_0
+    --cache-type-v q8_0
+    --jinja
+    --ctx-size ${default_ctx}
+    -ngl auto
+
+  # Embedding server: no KV cache / flash-attn; pooling comes from GGUF metadata.
+  server-embed: >
+    /opt/homebrew/bin/llama-server
+    --port ${PORT}
+    --host 127.0.0.1
+    --embeddings
+    -ngl auto
+
+models:
+  # ── Embeddings (pinned; see the "always-on" group) ────────────────────────
+  "bge-m3":
+    cmd: |
+      ${server-embed}
+      -m ${models_dir}/bge-m3.gguf
+      --ctx-size 8192
+    name: "bge-m3"
+    description: "Multilingual dense+sparse embeddings — RAG/knowledge base"
+    ttl: 0
+
+  "nomic-embed-text":
+    cmd: |
+      ${server-embed}
+      -m ${models_dir}/nomic-embed-text.gguf
+      --ctx-size 2048
+    name: "nomic-embed-text"
+    description: "Embeddings (alternate)"
+    ttl: 0
+
+  # ── Task model (pinned; small, drives title/tag/search-query generation) ──
+  "qwen2.5-coder-1.5b-base":
+    macros:
+      default_ctx: 4096
+    cmd: |
+      ${server-chat}
+      -m ${models_dir}/qwen2.5-coder-1.5b-base.gguf
+    name: "Qwen2.5-Coder 1.5B (task model)"
+    description: "Cheap model for Open WebUI title/tag/query generation"
+    ttl: 0
+
+  # ── Chat models (swap on demand, 5-min idle unload via globalTTL) ─────────
+  "llama3.1-8b":
+    cmd: |
+      ${server-chat}
+      -m ${models_dir}/llama3.1-8b.gguf
+    name: "Llama 3.1 8B"
+
+  "qwen2.5-7b":
+    cmd: |
+      ${server-chat}
+      -m ${models_dir}/qwen2.5-7b.gguf
+    name: "Qwen2.5 7B"
+
+  "deepseek-r1-14b":
+    cmd: |
+      ${server-chat}
+      -m ${models_dir}/deepseek-r1-14b.gguf
+    name: "DeepSeek-R1-Distill-Qwen 14B"
+    description: "Distill of R1 into Qwen-14B — NOT the 671B DeepSeek-R1"
+
+  "command-r7b-arabic":
+    cmd: |
+      ${server-chat}
+      -m ${models_dir}/command-r7b-arabic.gguf
+    name: "Command-R7B Arabic"
+
+  # ── Agentic coding model (MoE, tool-calling, 32K context) ─────────────────
+  # Purpose-built for coding agents (Aider / Cline / Continue). The model-level
+  # default_ctx override gives it 32K (vs the 16K chat default); --jinja (from
+  # server-chat) enables native tool/function calling.
+  "qwen3-coder-30b-a3b":
+    macros:
+      default_ctx: 32768
+    cmd: |
+      ${server-chat}
+      -m ${models_dir}/qwen3-coder-30b-a3b.gguf
+    name: "Qwen3-Coder 30B-A3B (agentic coding)"
+    description: "MoE coder for Aider/Cline — native tool-calling, 32K context"
+
+  # ── Vision models (chat + image; load the matching mmproj projector) ──────
+  # NOTE: moondream is intentionally NOT served here. Its prompt template lived
+  # in a separate Ollama layer that does not travel inside the GGUF, so via the
+  # OpenAI chat API llama.cpp falls back to a generic template and moondream
+  # produces broken output. The file remains in ~/models; for proper use run it
+  # directly:  llama-mtmd-cli -m ~/models/moondream.gguf \
+  #              --mmproj ~/models/moondream.mmproj.gguf --image PIC -p "describe"
+  "huihui-qwen3.6-27b-abliterated-mtp":
+    cmd: |
+      ${server-chat}
+      -m ${models_dir}/huihui-qwen3.6-27b-abliterated-mtp.gguf
+      --mmproj ${models_dir}/huihui-qwen3.6-27b-abliterated-mtp.mmproj.gguf
+    name: "Huihui Qwen3.6 27B abliterated (vision)"
+
+  "huihui-qwen3.6-35b-a3b-claude-4.7-opus-abliterated-mtp":
+    cmd: |
+      ${server-chat}
+      -m ${models_dir}/huihui-qwen3.6-35b-a3b-claude-4.7-opus-abliterated-mtp.gguf
+      --mmproj ${models_dir}/huihui-qwen3.6-35b-a3b-claude-4.7-opus-abliterated-mtp.mmproj.gguf
+    name: "Huihui Qwen3.6 35B-A3B abliterated (vision)"
+
+  # ── EXCLUDED — Ollama-fork-only architectures ─────────────────────────────
+  # These GGUFs were converted by Ollama's vendored ggml fork and use newer
+  # multimodal architectures that upstream llama.cpp b9650 cannot load yet:
+  #   qwen3.6                  → arch qwen35moe (vision)  — also served by MLX :5001
+  #   gemma-4-abliterated-e2b  → arch gemma4 (vision+audio) — no upstream support yet
+  # Files remain in ~/models. Re-enable after a future `brew upgrade llama.cpp`
+  # adds support, or by pulling an upstream-converted GGUF.
+
+routing:
+  router:
+    use: group
+    settings:
+      groups:
+        # Stay loaded together; chat models can never evict them.
+        "always-on":
+          swap: false
+          exclusive: false
+          persistent: true
+          members:
+            - "bge-m3"
+            - "nomic-embed-text"
+            - "qwen2.5-coder-1.5b-base"
+        # One chat/vision model at a time; does NOT unload the always-on group.
+        "chat":
+          swap: true
+          exclusive: false
+          members:
+            - "llama3.1-8b"
+            - "qwen2.5-7b"
+            - "deepseek-r1-14b"
+            - "command-r7b-arabic"
+            - "qwen3-coder-30b-a3b"
+            - "huihui-qwen3.6-27b-abliterated-mtp"
+            - "huihui-qwen3.6-35b-a3b-claude-4.7-opus-abliterated-mtp"
+
+hooks:
+  on_startup:
+    # Warm the constantly-used pinned models so RAG and title-gen are instant.
+    preload:
+      - "bge-m3"
+      - "qwen2.5-coder-1.5b-base"

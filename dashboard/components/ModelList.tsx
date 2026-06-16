@@ -61,7 +61,7 @@ const ModelRow = ({ model }: ModelRowProps) => {
         )}
       </td>
       <td className="py-3 pr-4 shrink-0">
-        <span className="font-mono text-xs text-ink-muted">{formatBytes({ bytes: model.size })}</span>
+        <span className="font-mono text-xs text-ink-muted">{model.size > 0 ? formatBytes({ bytes: model.size }) : "—"}</span>
       </td>
       <td className="py-3 pr-4 text-right shrink-0">
         <span className="opacity-0 group-hover:opacity-100 transition-opacity">
@@ -89,7 +89,7 @@ const ModelList = () => {
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Database size={13} className="text-ink-muted" />
-          <h2 className="text-sm font-medium text-ink">Ollama Models</h2>
+          <h2 className="text-sm font-medium text-ink">llama.cpp Models</h2>
           {!isLoading && (
             <span className="font-mono text-[10px] text-ink-dim">({models.length})</span>
           )}
@@ -102,9 +102,9 @@ const ModelList = () => {
         </div>
       ) : models.length === 0 ? (
         <div className="rounded-xl border border-edge bg-card px-4 py-10 text-center">
-          <p className="font-mono text-xs text-ink-muted">Ollama offline or no models pulled</p>
+          <p className="font-mono text-xs text-ink-muted">llama-swap offline or no models loaded</p>
           <p className="mt-2 font-mono text-[10px] text-ink-dim">
-            Run <code className="text-ink-muted">ollama pull &lt;model&gt;</code> to add models
+            Drop a <code className="text-ink-muted">.gguf</code> in <code className="text-ink-muted">~/models</code> and add it to llama-swap config
           </p>
         </div>
       ) : (

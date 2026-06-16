@@ -90,7 +90,7 @@ describe("ModelList", () => {
 
     render(<ModelList />, { wrapper: createWrapper() })
     await waitFor(() => {
-      expect(screen.getByText(/Ollama offline or no models pulled/i)).toBeInTheDocument()
+      expect(screen.getByText(/llama-swap offline or no models loaded/i)).toBeInTheDocument()
     })
   })
 

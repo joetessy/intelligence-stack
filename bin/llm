@@ -1,0 +1,201 @@
+#!/usr/bin/env bash
+# =============================================================================
+# llm — ollama-run-style CLI for the Intelligence Stack's local models.
+#
+# Models live in ~/models as <name>.gguf (+ <name>.mmproj.gguf for vision) and
+# are served by llama-swap at http://127.0.0.1:9292 (the same endpoint Open WebUI
+# uses). This wrapper is the terminal front-end that Ollama's `ollama run` used
+# to be.
+#
+#   llm                       list available models
+#   llm ls | list             same
+#   llm ps                    show models currently loaded in memory (llama-swap)
+#   llm <model>               interactive chat REPL (llama-cli / vision: mtmd-cli)
+#   llm <model> "your prompt" one-shot answer (via the shared llama-swap server)
+#   llm embed <model> "text"  print an embedding vector
+#   llm <model> --image PATH "describe this"   one-shot vision (image file)
+#   llm raw <model> "prompt"  raw completion, no chat template (base models)
+#   llm -h | --help           this help
+#
+# Model names are fuzzy: `llm llama3`, `llm deepseek`, `llm coder` all resolve.
+# Flags: --system "..."  --ctx N  (interactive only)
+# =============================================================================
+set -euo pipefail
+
+MODELS_DIR="${MODELS_DIR:-$HOME/models}"
+ENDPOINT="${LLAMASWAP_URL:-http://127.0.0.1:9292}"
+LLAMA_CLI="$(command -v llama-cli || true)"
+LLAMA_MTMD="$(command -v llama-mtmd-cli || true)"
+LLAMA_COMPLETION="$(command -v llama-completion || true)"
+
+# Tuned to match the llama-swap service (was OLLAMA_FLASH_ATTENTION / KV q8_0).
+TUNE=(--flash-attn on --cache-type-k q8_0 --cache-type-v q8_0 -ngl auto)
+
+# Architectures upstream llama.cpp b9650 can't load (Ollama-fork-only GGUFs).
+UNSUPPORTED=" qwen3.6 gemma-4-abliterated-e2b "
+
+c_dim=$'\033[2m'; c_b=$'\033[1m'; c_g=$'\033[0;32m'; c_y=$'\033[0;33m'; c_r=$'\033[0;31m'; c_n=$'\033[0m'
+die() { echo -e "${c_r}error:${c_n} $*" >&2; exit 1; }
+
+is_unsupported() { case "$UNSUPPORTED" in *" $1 "*) return 0;; esac; return 1; }
+is_embed()       { [[ "$1" == *embed* || "$1" == bge-* ]]; }
+is_vision()      { [[ -f "$MODELS_DIR/$1.mmproj.gguf" ]]; }
+
+list_stems() {
+  for f in "$MODELS_DIR"/*.gguf; do
+    local s; s="$(basename "$f" .gguf)"
+    [[ "$s" == *.mmproj ]] && continue
+    echo "$s"
+  done
+}
+
+# Resolve a (possibly partial) name to exactly one model stem.
+resolve() {
+  local q="$1" exact="" matches=()
+  while IFS= read -r s; do
+    [[ "$s" == "$q" ]] && exact="$s"
+    [[ "$s" == *"$q"* ]] && matches+=("$s")
+  done < <(list_stems)
+  if [[ -n "$exact" ]]; then echo "$exact"; return 0; fi
+  if [[ ${#matches[@]} -eq 1 ]]; then echo "${matches[0]}"; return 0; fi
+  if [[ ${#matches[@]} -eq 0 ]]; then
+    die "no model matches '$q'. Try: llm list"
+  fi
+  { echo -e "${c_y}ambiguous '$q' — matches:${c_n}"; printf '  %s\n' "${matches[@]}"; } >&2
+  exit 1
+}
+
+server_up() { curl -sf "$ENDPOINT/v1/models" >/dev/null 2>&1; }
+
+cmd_list() {
+  echo -e "${c_b}Local models${c_n} ${c_dim}($MODELS_DIR — served at $ENDPOINT)${c_n}"
+  local loaded=""
+  if server_up; then
+    loaded="$(curl -s "$ENDPOINT/running" 2>/dev/null \
+      | python3 -c "import sys,json;print(' '.join(m['model'] for m in json.load(sys.stdin).get('running',[])))" 2>/dev/null || true)"
+  fi
+  while IFS= read -r s; do
+    local tag="chat" mark=""
+    is_embed "$s"  && tag="embed"
+    is_vision "$s" && tag="vision"
+    is_unsupported "$s" && tag="${c_r}unsupported${c_n}"
+    [[ " $loaded " == *" $s "* ]] && mark="${c_g}● loaded${c_n}"
+    printf "  %-54s ${c_dim}%-8s${c_n} %b\n" "$s" "$tag" "$mark"
+  done < <(list_stems)
+  if server_up; then :; else echo -e "  ${c_y}(llama-swap not reachable — load states unknown)${c_n}"; fi
+  echo -e "${c_dim}unsupported = Ollama-fork-only arch; qwen3.6 is available via MLX/Open WebUI.${c_n}"
+}
+
+cmd_ps() {
+  server_up || die "llama-swap not reachable at $ENDPOINT (service: launchctl list | grep llama-swap)"
+  curl -s "$ENDPOINT/running" | python3 -c "
+import sys,json
+r=json.load(sys.stdin).get('running',[])
+if not r: print('  (no models loaded)'); raise SystemExit
+for m in r: print(f\"  {m['state']:>8}  {m['model']}\")
+"
+}
+
+cmd_embed() {
+  [[ $# -ge 1 ]] || die "usage: llm embed <model> \"text\""
+  local model; model="$(resolve "$1")"; shift
+  local text="${*:-}"; [[ -n "$text" ]] || die "give some text to embed"
+  server_up || die "llama-swap not reachable at $ENDPOINT"
+  local payload
+  payload="$(python3 - "$model" "$text" <<'PY'
+import json, sys
+print(json.dumps({"model": sys.argv[1], "input": sys.argv[2]}))
+PY
+)"
+  curl -s "$ENDPOINT/v1/embeddings" -H 'Content-Type: application/json' -d "$payload" \
+    | python3 -c "import sys,json;v=json.load(sys.stdin)['data'][0]['embedding'];print(f'{len(v)}-dim:',[round(x,4) for x in v[:8]],'...')"
+}
+
+# One-shot via the shared llama-swap server (clean output, reuses loaded model).
+oneshot_api() {
+  local model="$1" prompt="$2" image="${3:-}"
+  server_up || die "llama-swap not reachable at $ENDPOINT — start it or use interactive mode"
+  local payload
+  payload="$(python3 - "$model" "$prompt" "$image" <<'PY'
+import json, sys, base64, os
+model, prompt, image = sys.argv[1], sys.argv[2], sys.argv[3]
+if image:
+    with open(os.path.expanduser(image), "rb") as f:
+        b64 = base64.b64encode(f.read()).decode()
+    ext = os.path.splitext(image)[1].lstrip(".") or "png"
+    content = [
+        {"type": "text", "text": prompt},
+        {"type": "image_url", "image_url": {"url": f"data:image/{ext};base64,{b64}"}},
+    ]
+else:
+    content = prompt
+print(json.dumps({"model": model, "messages": [{"role": "user", "content": content}], "stream": False}))
+PY
+)"
+  curl -s "$ENDPOINT/v1/chat/completions" -H 'Content-Type: application/json' -d "$payload" \
+    | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+if 'error' in d: print('error:', d['error'], file=sys.stderr); raise SystemExit(1)
+print(d['choices'][0]['message']['content'])
+"
+}
+
+# Interactive REPL via llama-cli / llama-mtmd-cli (rich built-in /commands).
+interactive() {
+  local model="$1" gguf="$MODELS_DIR/$model.gguf" sys="${2:-}" ctx="${3:-16384}"
+  echo -e "${c_dim}loading $model (Ctrl+C or /exit to quit)…${c_n}"
+  local -a sysargs=(); [[ -n "$sys" ]] && sysargs=(-sys "$sys")
+  if is_vision "$model"; then
+    exec "$LLAMA_MTMD" -m "$gguf" --mmproj "$MODELS_DIR/$model.mmproj.gguf" \
+      "${TUNE[@]}" -c "$ctx" "${sysargs[@]}"
+  else
+    exec "$LLAMA_CLI" -m "$gguf" "${TUNE[@]}" -c "$ctx" "${sysargs[@]}"
+  fi
+}
+
+# ── Dispatch ────────────────────────────────────────────────────────────────
+[[ $# -eq 0 ]] && { cmd_list; exit 0; }
+
+case "$1" in
+  -h|--help|help) sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  ls|list)        cmd_list; exit 0 ;;
+  ps)             cmd_ps; exit 0 ;;
+  embed)          shift; cmd_embed "$@"; exit 0 ;;
+  raw)
+    shift; [[ $# -ge 2 ]] || die "usage: llm raw <model> \"prompt\""
+    model="$(resolve "$1")"; shift
+    [[ -n "$LLAMA_COMPLETION" ]] || die "llama-completion not found"
+    exec "$LLAMA_COMPLETION" -m "$MODELS_DIR/$model.gguf" "${TUNE[@]}" -p "$*" ;;
+esac
+
+# llm <model> [flags] [prompt...]
+MODEL="$(resolve "$1")"; shift
+SYS=""; CTX="16384"; IMAGE=""; PROMPT_PARTS=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --system) SYS="$2"; shift 2 ;;
+    --ctx)    CTX="$2"; shift 2 ;;
+    --image)  IMAGE="$2"; shift 2 ;;
+    *)        PROMPT_PARTS+=("$1"); shift ;;
+  esac
+done
+PROMPT="${PROMPT_PARTS[*]:-}"
+
+if is_unsupported "$MODEL"; then
+  echo -e "${c_y}$MODEL${c_n} uses an architecture upstream llama.cpp can't load yet" >&2
+  [[ "$MODEL" == qwen3.6 ]] && echo "  → qwen3.6 is available in Open WebUI via the MLX backend (:5001)." >&2
+  echo "  → Retry after a future 'brew upgrade llama.cpp', or pull an upstream GGUF." >&2
+  exit 2
+fi
+
+if is_embed "$MODEL"; then
+  [[ -n "$PROMPT" ]] && { cmd_embed "$MODEL" "$PROMPT"; exit 0; }
+  die "$MODEL is an embedding model. Use: llm embed $MODEL \"text\""
+fi
+
+if [[ -n "$PROMPT" ]]; then
+  oneshot_api "$MODEL" "$PROMPT" "$IMAGE"
+else
+  interactive "$MODEL" "$SYS" "$CTX"
+fi

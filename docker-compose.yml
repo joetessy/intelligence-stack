@@ -3,8 +3,9 @@
 # Services: SearXNG · FlareSolverr · Open WebUI · Faster-Whisper (STT)
 #           openedai-speech (TTS) · Dashboard
 # Native on host:
-#   Ollama  → http://localhost:11434  (GGUF models, auto-unloads after 5m)
-#   MLX-LM  → http://localhost:5001   (MLX models, auto-starts via LaunchAgent)
+#   llama-swap → http://localhost:9292  (llama.cpp GGUF models, OpenAI API,
+#                                        hot-swaps on demand, unloads after 5m)
+#   MLX-LM     → http://localhost:5001  (MLX models, auto-starts via LaunchAgent)
 #
 # Start:   docker compose up -d
 # Stop:    docker compose down
@@ -146,7 +147,14 @@ services:
     volumes:
       - open-webui-data:/app/backend/data
     environment:
-      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      # ── Local LLM backends (OpenAI-compatible) ──────────────────────────
+      # Ollama is gone. Chat + embeddings now come from llama-swap (llama.cpp)
+      # and MLX, both over the OpenAI API. URLS/KEYS are ';'-separated and
+      # paired by index (MLX = index 0, llama-swap = index 1).
+      - ENABLE_OLLAMA_API=false
+      - ENABLE_OPENAI_API=true
+      - OPENAI_API_BASE_URLS=http://host.docker.internal:5001/v1;http://host.docker.internal:9292/v1
+      - OPENAI_API_KEYS=mlx-local;llama-swap-local
       - ENABLE_WEB_SEARCH=true
       - WEB_SEARCH_ENGINE=searxng
       - SEARXNG_QUERY_URL=http://searxng:8080/search
@@ -183,11 +191,14 @@ services:
       - SCARF_NO_ANALYTICS=true
       - DO_NOT_TRACK=true
       - ANONYMIZED_TELEMETRY=false
-      - RAG_EMBEDDING_ENGINE=ollama
+      # Embeddings now served by llama-swap (bge-m3 GGUF, pinned always-on).
+      # Open WebUI POSTs to {base}/embeddings, so the base URL MUST end in /v1.
+      - RAG_EMBEDDING_ENGINE=openai
       # bge-m3: multilingual, dense+sparse, ~8K context, materially better
       # recall than nomic-embed-text on real RAG workloads.
       - RAG_EMBEDDING_MODEL=bge-m3
-      - RAG_OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - RAG_OPENAI_API_BASE_URL=http://host.docker.internal:9292/v1
+      - RAG_OPENAI_API_KEY=llama-swap-local
       # Tuned for bge-m3 (8K embed context) on M4 Max. Larger chunks preserve
       # more context per retrieval; higher top-k lets the model see more
       # candidates without an expensive reranker round-trip.
@@ -201,20 +212,27 @@ services:
       # that pure cosine misses. Negligible cost since bge-m3 produces both
       # vectors in a single pass.
       - ENABLE_RAG_HYBRID_SEARCH=true
-      - OPENAI_API_BASE_URL=http://host.docker.internal:5001/v1
-      - OPENAI_API_KEY=mlx-local
+      # (OpenAI backends are configured above via OPENAI_API_BASE_URLS — the
+      # MLX server on :5001 and llama-swap on :9292.)
       - ENABLE_MODEL_FILTER=false
-      - ENABLE_PERSISTENT_CONFIG=true
+      # false = read config from THIS file on every boot (config-as-code), so
+      # edits to the env above always take effect. With =true, Open WebUI bakes
+      # these values into its DB on first launch and then IGNORES env changes —
+      # which is exactly why the old Ollama settings were "stuck". Chats,
+      # knowledge bases, users, API keys and installed plugins persist either
+      # way (separate DB tables). Set =true if you'd rather manage connections
+      # and RAG from the Admin UI instead of this file.
+      - ENABLE_PERSISTENT_CONFIG=false
       # Title + tag + search-query generation default to the chat model. With a
       # 27B chat model and ENABLE_SEARCH_QUERY_GENERATION=true (default), every
       # web search pays a big-model prefill just to rewrite the query. Point
       # TASK_MODEL_EXTERNAL at a small fast model to make these cheap.
       #
-      # Pointed at qwen2.5-coder:1.5b-base (already pulled, 986MB). Lives in
-      # Ollama so it doesn't fight MLX for the unified-memory slot. Bump if you
-      # find a 3-4B Qwen3 chat-tuned variant — the coder-base model is small
-      # and instruction-light but more than enough for 5-token chat titles.
-      - TASK_MODEL_EXTERNAL=qwen2.5-coder:1.5b-base
+      # qwen2.5-coder-1.5b-base (940MB) is pinned always-on in llama-swap (its
+      # own group, ttl 0), so title/tag/query generation never evicts the
+      # active chat model. The id is the llama-swap model key (hyphens, not the
+      # old Ollama "name:tag" form). Bump if you find a small Qwen3 chat variant.
+      - TASK_MODEL_EXTERNAL=qwen2.5-coder-1.5b-base
       # Alternative: disable auto-generation entirely if you don't use it.
       # - ENABLE_TITLE_GENERATION=false
       # - ENABLE_TAGS_GENERATION=false
@@ -277,7 +295,7 @@ services:
       - SEARXNG_URL=http://searxng:8080
       - WHISPER_URL=http://faster-whisper:8000
       - TTS_URL=http://openedai-speech:8000
-      - OLLAMA_URL=http://host.docker.internal:11434
+      - LLAMASWAP_URL=http://host.docker.internal:9292
       - MLX_URL=http://host.docker.internal:5001
       - MCP_FS_URL=http://host.docker.internal:8901
       - OPEN_TERMINAL_URL=http://open-terminal:8000

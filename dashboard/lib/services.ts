@@ -1,6 +1,6 @@
 import type { ServiceConfig, MCPServerConfig } from "@/types"
 
-const OLLAMA_URL = process.env.OLLAMA_URL ?? "http://localhost:11434"
+const LLAMASWAP_URL = process.env.LLAMASWAP_URL ?? "http://localhost:9292"
 const OPEN_WEBUI_URL = process.env.OPEN_WEBUI_URL ?? "http://localhost:3000"
 const SEARXNG_URL = process.env.SEARXNG_URL ?? "http://localhost:8080"
 const WHISPER_URL = process.env.WHISPER_URL ?? "http://localhost:8765"
@@ -51,11 +51,11 @@ export const SERVICES: readonly ServiceConfig[] = [
     healthUrl: `${TTS_URL}/v1/models`
   },
   {
-    id: "ollama",
-    name: "Ollama",
-    description: "LLM inference (GGUF)",
-    hostUrl: "http://localhost:3000/workspace/models",
-    healthUrl: `${OLLAMA_URL}`
+    id: "llama-swap",
+    name: "llama.cpp",
+    description: "LLM inference (GGUF, hot-swap)",
+    hostUrl: "http://localhost:9292/ui",
+    healthUrl: `${LLAMASWAP_URL}/v1/models`
   },
   {
     id: "mlx-lm",

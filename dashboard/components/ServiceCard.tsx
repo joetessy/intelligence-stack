@@ -17,7 +17,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   searxng:           Search,
   "whisper-stt":     Mic,
   "openedai-speech": Volume2,
-  ollama:            Cpu,
+  "llama-swap":      Cpu,
   "mlx-lm":          Cpu,
 }
 

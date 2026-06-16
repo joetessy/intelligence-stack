@@ -9,7 +9,7 @@ interface QuickLink {
 const QUICK_LINKS: readonly QuickLink[] = [
   { label: "Open Chat", url: "http://localhost:3000", sublabel: "Open WebUI" },
   { label: "Search UI", url: "http://localhost:8080", sublabel: "SearXNG" },
-  { label: "Ollama API", url: "http://localhost:11434/api/tags", sublabel: "REST" }
+  { label: "llama.cpp API", url: "http://localhost:9292/v1/models", sublabel: "OpenAI" }
 ]
 
 const QuickLaunch = () => {

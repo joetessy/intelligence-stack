@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.intelligence-stack.llama-swap</string>
+
+    <!-- llama-swap proxies/hot-swaps llama.cpp (llama-server) instances behind
+         one OpenAI-compatible endpoint. Replaces the old Ollama service.
+         --listen is a CLI flag (not a config key). 127.0.0.1 = loopback only,
+         reachable from Docker via host.docker.internal (same as Ollama was). -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/homebrew/bin/llama-swap</string>
+        <string>--config</string>
+        <string>/Users/yusuf/Projects/intelligence-stack/llama-swap/config.yaml</string>
+        <string>--listen</string>
+        <string>127.0.0.1:9292</string>
+        <string>--watch-config</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/yusuf/Library/Logs/intelligence-stack/llama-swap.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/yusuf/Library/Logs/intelligence-stack/llama-swap.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <!-- HOME is required: the config's ${env.HOME} macro resolves the
+             models_dir to ~/models. -->
+        <key>HOME</key>
+        <string>/Users/yusuf</string>
+        <!-- PATH so llama-swap can exec llama-server (Homebrew bin). -->
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+</dict>
+</plist>
