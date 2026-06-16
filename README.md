@@ -135,6 +135,35 @@ Apple Silicon uses unified memory shared between MLX and llama-swap. Large model
 
 ---
 
+## Coding agents (Aider / Cline / Continue)
+
+The local model endpoints are OpenAI-compatible, so any coding agent can drive
+them — no cloud, no API bills, fully offline. Two endpoints, two strengths:
+
+- **llama-swap** — `http://localhost:9292/v1`, model `qwen3-coder-30b-a3b`
+  (Qwen3-Coder 30B-A3B MoE). Tuned for agentic work: native **tool/function
+  calling** (`--jinja`) and a **32K** context. Best for tool-driven agents.
+- **MLX** — `http://localhost:5001/v1`, model `Qwen2.5-Coder-32B-Instruct-4bit`.
+  A strong dense coder; great with diff-based agents like Aider.
+
+**Aider** (CLI, git-native):
+
+```bash
+export OPENAI_API_BASE=http://localhost:9292/v1   # or :5001/v1 for the MLX coder
+export OPENAI_API_KEY=local                         # any non-empty string
+aider --model openai/qwen3-coder-30b-a3b
+```
+
+**Cline / Continue** (VS Code): add an *OpenAI-compatible* provider with base
+URL `http://localhost:9292/v1`, any API key, model `qwen3-coder-30b-a3b`.
+
+Reality check: a 4-bit 30B coder is genuinely useful for scoped edits,
+refactors, and test generation, but trails frontier models on large multi-file
+agentic tasks. The pragmatic play is hybrid — local for private/offline/bulk
+work, a frontier model for the hard changes.
+
+---
+
 ## Configuration
 
 | File | Purpose |
