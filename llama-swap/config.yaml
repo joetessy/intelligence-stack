@@ -44,11 +44,16 @@ macros:
     -ngl auto
 
   # Embedding server: no KV cache / flash-attn; pooling comes from GGUF metadata.
+  # --batch-size/--ubatch-size 4096: embedding models require each input to fit
+  # in one physical batch (default 512 rejects inputs > ~510 tokens). 4096 lets
+  # Brain Bank embed 800-token chunks and leaves headroom up to bge-m3's 8192 ctx.
   server-embed: >
     /opt/homebrew/bin/llama-server
     --port ${PORT}
     --host 127.0.0.1
     --embeddings
+    --batch-size 4096
+    --ubatch-size 4096
     -ngl auto
 
 models:
