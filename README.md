@@ -58,7 +58,7 @@ The dashboard is at **http://localhost:3001**.
 | | |
 |---|---|
 | ![Open WebUI](docs/webui.png) | ![Dashboard](docs/dashboard.png) |
-| **Open WebUI** — chat interface with all local models (llama.cpp + MLX) | **Dashboard** — live service health and model browser |
+| **Open WebUI** — chat interface with all local models (llama.cpp + MLX) | **Dashboard** — live service health at a glance |
 | ![SearXNG](docs/searchxng.png) | ![Status](docs/status_command.png) |
 | **SearXNG** — self-hosted metasearch with category tabs | **`./status.sh`** — terminal health check |
 

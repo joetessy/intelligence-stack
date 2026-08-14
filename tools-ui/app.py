@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-app.py — "OCR & Scores" web UI for the Intelligence Stack.
+app.py — OCR web UI for the Intelligence Stack.
 
 Two tabs, served on 0.0.0.0:5005 (browser: http://localhost:5005):
   * OCR                       — image/PDF -> text or Markdown (Baidu Unlimited-OCR)
@@ -170,9 +170,9 @@ CSS = """
 footer { visibility: hidden; }
 """
 
-with gr.Blocks(title="OCR & Scores — Intelligence Stack", theme=gr.themes.Soft(), css=CSS) as demo:
+with gr.Blocks(title="OCR — Intelligence Stack", theme=gr.themes.Soft(), css=CSS) as demo:
     with gr.Column(elem_id="hdr"):
-        gr.Markdown("# OCR & Scores")
+        gr.Markdown("# OCR")
         gr.Markdown("Local & offline. **OCR reads the _text_; the score tab reads the _notes_.**")
     badge = gr.Markdown(_status_badge(), elem_id="badge")
     gr.Timer(3.0).tick(_status_badge, outputs=badge)
