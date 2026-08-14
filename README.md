@@ -135,6 +135,73 @@ Apple Silicon uses unified memory shared between MLX and llama-swap. Large model
 
 ---
 
+## OCR — Unlimited-OCR (document parsing)
+
+[Unlimited-OCR](https://huggingface.co/baidu/Unlimited-OCR) is Baidu's 3B
+vision-language OCR model (DeepSeek-V2 + SAM/CLIP encoders, MIT) — the successor
+to DeepSeek-OCR. It turns single images and **whole multi-page PDFs in one pass**
+into layout-aware Markdown with bounding boxes.
+
+It is **not a GGUF** and cannot run on llama-swap: it ships custom
+`trust_remote_code` modeling code, not a llama.cpp architecture. So it lives as a
+stand-alone, on-demand CLI (`ocr`) with its own Python 3.12 venv under `ocr/` —
+loaded per-invocation and freed on exit, not a persistent service.
+
+On Apple Silicon it runs on the **MPS** backend via the community
+[Universal fork](https://huggingface.co/sabafallah/Unlimited-OCR-Universal)
+(unchanged Baidu weights; code patched for MPS and forced to **fp32**, because
+bf16 drifts into repeated garbage through the MoE router). Budget **~13 GB**
+unified RAM while a job runs.
+
+### Setup (one-time, ~6.7 GB download)
+
+```bash
+./ocr/setup.sh                          # Py3.12 venv + pinned deps + model
+ln -sf "$PWD/bin/ocr" ~/.local/bin/ocr  # optional: put `ocr` on PATH
+```
+
+### Usage
+
+```bash
+ocr scan.jpg                 # parse one image -> Markdown on stdout
+ocr scan.jpg --task text     # plain-text extraction (no layout)
+ocr scan.png --mode base     # single-scale (faster; clean pages)
+ocr report.pdf               # multi-page PDF -> one-shot parse
+ocr report.pdf --pages 1-5   # subset of pages (--dpi 200 default)
+ocr scan.jpg --save out/     # also write result.md + boxed image
+```
+
+`--mode gundam` (default) uses hi-res tiling for dense/small text; `--mode base`
+is single-scale and faster. Run `ocr --help` for all flags.
+
+---
+
+## OCR & Scores web UI + Quick Actions
+
+Two point-and-click front-ends wrap the `ocr` and `sheet2mscz` CLIs:
+
+- **Web UI** (`tools-ui/`) — a local Gradio app on **http://localhost:5005** with
+  two tabs: drag in an image/PDF → OCR text, or a sheet-music image/PDF → a
+  downloadable `.mscz`. Linked from the dashboard as **OCR & Scores**. Runs
+  host-native (reuses the OCR venv, keeps the model warm) via a LaunchAgent, and
+  shells out to `musescore/omr/sheet2mscz` for scores (music logic stays there).
+
+  ```bash
+  ./tools-ui/setup.sh    # adds gradio<6 to the OCR venv (pins hub<1.0)
+  cp com.intelligence-stack.tools-ui.plist ~/Library/LaunchAgents/
+  launchctl load ~/Library/LaunchAgents/com.intelligence-stack.tools-ui.plist
+  ```
+- **Finder Quick Actions** — right-click a file → **OCR to text** (writes
+  `<name>.ocr.txt`) or **Sheet music to MuseScore** (writes to `omr-out/`):
+
+  ```bash
+  python3 tools-ui/make-quick-actions.py
+  ```
+  Enable in System Settings ▸ Login Items & Extensions ▸ Quick Actions if they
+  do not appear immediately.
+
+---
+
 ## Coding agents (Aider / Cline / Continue)
 
 The local model endpoints are OpenAI-compatible, so any coding agent can drive
@@ -175,6 +242,9 @@ work, a frontier model for the hard changes.
 | `mlx-server.sh` | MLX-LM server startup script |
 | `llama-swap/config.yaml` | llama.cpp models served + hot-swap/pin policy — the source of truth for what's available on :9292 |
 | `bin/llm` | `ollama run`-style CLI (symlinked to `~/.local/bin/llm`) |
+| `ocr/` | Unlimited-OCR tool: `setup.sh` (Py3.12 venv + model), `ocr.py` (CLI), pinned `requirements.txt` |
+| `bin/ocr` | `ocr`-style CLI for Unlimited-OCR document parsing (symlink to `~/.local/bin/ocr`) |
+| `tools-ui/` | "OCR & Scores" web UI (Gradio, :5005): `app.py`, `setup.sh`, `make-quick-actions.py` |
 | `migrate-ollama-gguf.py`, `verify-models.sh` | One-time Ollama→llama.cpp migration: clone GGUFs out of Ollama's blob store and verify they load |
 | `mcp-servers.sh` | MCP tool servers for Open WebUI (optional) |
 | `provision-webui.sh` | Registers MCP servers and Open Terminal with Open WebUI |
@@ -196,6 +266,7 @@ work, a frontier model for the hard changes.
 | Plist | Purpose |
 |-------|---------|
 | `~/Library/LaunchAgents/com.intelligence-stack.mlx-server.plist` | MLX-LM server on port 5001 |
+| `~/Library/LaunchAgents/com.intelligence-stack.tools-ui.plist` | OCR & Scores web UI on port 5005 |
 | `~/Library/LaunchAgents/com.intelligence-stack.llama-swap.plist` | llama-swap on port 9292 (llama.cpp, flash attention + q8 KV cache) |
 | `~/Library/LaunchAgents/com.intelligence-stack.pin-embeddings.plist` | Warms `bge-m3` in llama-swap at login |
 | `~/Library/LaunchAgents/com.intelligence-stack.mcp-servers.plist` | MCP filesystem server on port 8901 (optional) |
@@ -237,7 +308,7 @@ docker compose pull && docker compose up -d
 # Run a model in the terminal (ollama-run style)
 llm                       # list models
 llm llama3.1-8b "hello"   # one-shot answer (via the shared llama-swap server)
-llm qwen2.5-7b            # interactive chat REPL
+llm qwen3.8-27b           # interactive chat REPL (flagship chat + vision)
 llm ps                    # which models are loaded in memory
 
 # Restart llama-swap (it also hot-reloads config.yaml via --watch-config)

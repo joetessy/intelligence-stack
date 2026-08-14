@@ -6,6 +6,7 @@ const SEARXNG_URL = process.env.SEARXNG_URL ?? "http://localhost:8080"
 const WHISPER_URL = process.env.WHISPER_URL ?? "http://localhost:8765"
 const TTS_URL = process.env.TTS_URL ?? "http://localhost:8880"
 const MLX_URL = process.env.MLX_URL ?? "http://localhost:5001"
+const TOOLS_UI_URL = process.env.TOOLS_UI_URL ?? "http://localhost:5005"
 
 const MCP_FS_URL = process.env.MCP_FS_URL ?? "http://localhost:8901"
 
@@ -63,5 +64,12 @@ export const SERVICES: readonly ServiceConfig[] = [
     description: "LLM inference (Apple Silicon)",
     hostUrl: "http://localhost:5001",
     healthUrl: `${MLX_URL}/v1/models`
+  },
+  {
+    id: "tools-ui",
+    name: "OCR & Scores",
+    description: "OCR + sheet-music → MuseScore",
+    hostUrl: "http://localhost:5005",
+    healthUrl: `${TOOLS_UI_URL}`
   },
 ]

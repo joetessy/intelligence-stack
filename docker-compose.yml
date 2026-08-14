@@ -297,6 +297,7 @@ services:
       - TTS_URL=http://openedai-speech:8000
       - LLAMASWAP_URL=http://host.docker.internal:9292
       - MLX_URL=http://host.docker.internal:5001
+      - TOOLS_UI_URL=http://host.docker.internal:5005
       - MCP_FS_URL=http://host.docker.internal:8901
       - OPEN_TERMINAL_URL=http://open-terminal:8000
       - OPEN_TERMINAL_KEY=${OPEN_TERMINAL_API_KEY}

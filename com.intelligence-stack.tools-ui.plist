@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.intelligence-stack.tools-ui</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/yusuf/Projects/intelligence-stack/ocr/.venv/bin/python</string>
+        <string>/Users/yusuf/Projects/intelligence-stack/tools-ui/app.py</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/yusuf/Library/Logs/intelligence-stack/tools-ui.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/yusuf/Library/Logs/intelligence-stack/tools-ui.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <!-- bash (for sheet2mscz) + Homebrew tools on PATH; HOME for Path.home(). -->
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>HOME</key>
+        <string>/Users/yusuf</string>
+    </dict>
+</dict>
+</plist>

@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# =============================================================================
+# check-qwen3.8 — has the official Qwen3.8-27B open-weight release landed?
+#
+# Announced 2026-08-03 with weights promised "within the week". The Qwen3.8
+# family began landing 2026-08-12 (Qwen3.8-2.4T-A95B first); this script gates
+# specifically on the 27B — other family members don't count. Third-party
+# "Qwen3.8-27B" uploads predate the official drop (do not pull those).
+#
+#   ./bin/check-qwen3.8            exit 0 = official 27B weights are live
+# =============================================================================
+set -euo pipefail
+
+c_g=$'\033[0;32m'; c_y=$'\033[0;33m'; c_n=$'\033[0m'
+
+api() { curl -sf --max-time 20 "https://huggingface.co/api/models?$1&limit=100"; }
+
+echo "Checking Hugging Face for the official Qwen3.8-27B release..."
+
+official=$(api "author=Qwen&search=Qwen3.8" || true)
+family=$(grep -oE '"Qwen/Qwen3\.8[^"]*"' <<<"$official" | tr -d '"' | sort -u || true)
+
+if ! grep -qE '^Qwen/Qwen3\.8-27B' <<<"$family"; then
+  if [[ -n "$family" ]]; then
+    echo -e "${c_y}27B not yet${c_n} — but the Qwen3.8 family has started landing:"
+    sed 's/^/  /' <<<"$family"
+    echo "The 27B usually follows shortly; keep checking."
+  else
+    echo -e "${c_y}Not yet.${c_n} The official Qwen org has no Qwen3.8 repos."
+  fi
+  exit 1
+fi
+
+echo -e "${c_g}Official Qwen3.8-27B weights are live:${c_n}"
+grep -E '^Qwen/Qwen3\.8-27B' <<<"$family" | sed 's/^/  /'
+
+echo ""
+echo "Trusted GGUF conversions (ggml-org / unsloth / bartowski):"
+found=0
+for org in ggml-org unsloth bartowski; do
+  ids=$(api "author=$org&search=Qwen3.8-27B" | grep -oE "\"$org/[^\"]*GGUF[^\"]*\"" | tr -d '"' | sort -u || true)
+  [[ -n "$ids" ]] && { found=1; sed 's/^/  /' <<<"$ids"; }
+done
+[[ $found -eq 0 ]] && echo -e "  ${c_y}none yet${c_n} — conversions usually lag the release by a few days"
+
+cat <<'EOF'
+
+Enable steps (also in llama-swap/config.yaml):
+  1. brew upgrade llama.cpp        # new arch may need a fresh build
+  2. download a trusted GGUF (~Q4 is roughly 16-17 GB) to ~/models/qwen3.8-27b.gguf
+  3. uncomment the qwen3.8-27b block + chat-group member in llama-swap/config.yaml
+  4. launchctl kickstart -k gui/$(id -u)/com.intelligence-stack.llama-swap
+  5. ./verify-models.sh
+EOF

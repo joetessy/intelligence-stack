@@ -88,17 +88,27 @@ models:
     ttl: 0
 
   # ── Chat models (swap on demand, 5-min idle unload via globalTTL) ─────────
+  # Flagship: Qwen3.8-27B (released 2026-08-12, Apache 2.0). Dense 27B
+  # vision-language model, hybrid Gated-DeltaNet attention, 262K native ctx
+  # (1M via YaRN) — served at 32K here. Thinking mode is on by default;
+  # recommended client-side sampling: instruct temp 0.7 / top-p 0.8 / top-k 20,
+  # thinking temp 1.0 / top-p 0.95. Replaces qwen2.5-7b (GGUF kept in ~/models).
+  # Needs the b10360 llama.cpp upgrade — b9650 predates the arch.
+  "qwen3.8-27b":
+    macros:
+      default_ctx: 32768
+    cmd: |
+      ${server-chat}
+      -m ${models_dir}/qwen3.8-27b.gguf
+      --mmproj ${models_dir}/qwen3.8-27b.mmproj.gguf
+    name: "Qwen3.8 27B (chat + vision)"
+    description: "Flagship dense 27B VL — thinking mode, tool calling, image/video understanding"
+
   "llama3.1-8b":
     cmd: |
       ${server-chat}
       -m ${models_dir}/llama3.1-8b.gguf
     name: "Llama 3.1 8B"
-
-  "qwen2.5-7b":
-    cmd: |
-      ${server-chat}
-      -m ${models_dir}/qwen2.5-7b.gguf
-    name: "Qwen2.5 7B"
 
   "deepseek-r1-14b":
     cmd: |
@@ -174,8 +184,8 @@ routing:
           swap: true
           exclusive: false
           members:
+            - "qwen3.8-27b"
             - "llama3.1-8b"
-            - "qwen2.5-7b"
             - "deepseek-r1-14b"
             - "command-r7b-arabic"
             - "qwen3-coder-30b-a3b"

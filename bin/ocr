@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# =============================================================================
+# ocr — Unlimited-OCR (Baidu) document OCR on Apple Silicon (MPS).
+#
+# Thin front-end that runs ocr/ocr.py inside its dedicated Python 3.12 venv, so
+# it works from anywhere (including when symlinked onto PATH):
+#     ln -sf /path/to/intelligence-stack/bin/ocr ~/.local/bin/ocr
+#
+#   ocr scan.jpg            parse one image -> Markdown on stdout
+#   ocr report.pdf         multi-page PDF -> one-shot parse
+#   ocr --help             all flags
+#
+# First-time setup (venv + ~6.7 GB model): run  ocr/setup.sh
+# =============================================================================
+set -euo pipefail
+
+# Resolve this script's real directory, following symlinks (matches bin/llm).
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+BIN_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+STACK_DIR="$(dirname "$BIN_DIR")"
+OCR_DIR="$STACK_DIR/ocr"
+VENV_PY="$OCR_DIR/.venv/bin/python"
+
+if [[ ! -x "$VENV_PY" ]]; then
+  echo "ocr: venv not found — run '$OCR_DIR/setup.sh' first" >&2
+  exit 1
+fi
+
+exec "$VENV_PY" "$OCR_DIR/ocr.py" "$@"

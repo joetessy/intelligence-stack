@@ -7,6 +7,7 @@ import {
   Mic,
   Volume2,
   Cpu,
+  ScanText,
   ExternalLink,
   type LucideIcon
 } from "lucide-react"
@@ -19,6 +20,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   "openedai-speech": Volume2,
   "llama-swap":      Cpu,
   "mlx-lm":          Cpu,
+  "tools-ui":        ScanText,
 }
 
 const getLatencyColor = (ms: number): string => {

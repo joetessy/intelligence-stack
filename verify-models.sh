@@ -15,7 +15,7 @@ pass=0; fail=0; declare -a FAILED
 # Embedding models (need --embeddings; tested via /v1/embeddings)
 EMBED_MODELS=" bge-m3 nomic-embed-text "
 # Vision models (load with matching .mmproj.gguf)
-VISION_MODELS=" moondream huihui-qwen3.6-27b-abliterated-mtp huihui-qwen3.6-35b-a3b-claude-4.7-opus-abliterated-mtp "
+VISION_MODELS=" moondream qwen3.8-27b huihui-qwen3.6-27b-abliterated-mtp huihui-qwen3.6-35b-a3b-claude-4.7-opus-abliterated-mtp "
 
 is_in() { case "$2" in *" $1 "*) return 0;; esac; return 1; }
 
@@ -87,6 +87,13 @@ check() {
 echo ""
 echo "Verifying models in $MODELS_DIR with $LLAMA_SERVER"
 echo ""
+
+# Drain llama-swap before testing: a chat model held on :9292 double-books
+# unified memory with the copy loaded here and Metal OOMs ("Compute error")
+# once both near the working-set limit — bit us with qwen3.8-27b (18 GB × 2 on
+# 48 GB). Pinned always-on models reload on their next request, or restart the
+# service afterwards: launchctl kickstart -k gui/$(id -u)/com.intelligence-stack.llama-swap
+curl -sf --max-time 10 "http://127.0.0.1:9292/unload" >/dev/null 2>&1 || true
 for gguf in "$MODELS_DIR"/*.gguf; do
   stem="$(basename "$gguf" .gguf)"
   [[ "$stem" == *.mmproj ]] && continue   # skip projector files
