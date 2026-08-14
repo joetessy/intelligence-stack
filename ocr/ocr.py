@@ -202,7 +202,7 @@ def main() -> None:
         description="Unlimited-OCR document OCR (Apple Silicon / MPS).",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    ap.add_argument("inputs", nargs="+", help="image file(s), or a single PDF")
+    ap.add_argument("inputs", nargs="+", help="image and/or PDF file(s)")
     ap.add_argument("--task", choices=TASKS, default="parse",
                     help="parse = layout Markdown (default); text = plain text")
     ap.add_argument("--mode", choices=MODES, default="gundam",
@@ -228,20 +228,39 @@ def main() -> None:
     device, dtype = pick_device(args.device)
     print(f"[ocr] device={device} dtype={str(dtype).rsplit('.', 1)[-1]} "
           f"model={model_dir.name}", file=sys.stderr)
-    model, tok = load_model(model_dir, device, dtype)
+    if not model_dir.exists():
+        sys.exit(f"model not found at {model_dir}\nRun ocr/setup.sh to download it (~6.7 GB).")
 
+    # Rasterize + validate PDFs BEFORE the ~13 GB model load, so a bad --pages
+    # spec or unreadable PDF fails in seconds instead of after the ~40 s load.
     is_pdf = len(inputs) == 1 and inputs[0].suffix.lower() == ".pdf"
     if is_pdf:
         mprompt = args.prompt or ("<image>" + MULTI_TASKS[args.task])
         with tempfile.TemporaryDirectory() as td:
             imgs = pdf_to_images(inputs[0], Path(td), args.dpi, args.pages)
             print(f"[ocr] {inputs[0].name}: {len(imgs)} page(s) @ {args.dpi} dpi", file=sys.stderr)
+            model, tok = load_model(model_dir, device, dtype)
             text = run_multi(model, tok, imgs, mprompt, args.max_length, save_dir)
     elif len(inputs) > 1:
         mprompt = args.prompt or ("<image>" + MULTI_TASKS[args.task])
-        text = run_multi(model, tok, [str(p) for p in inputs], mprompt, args.max_length, save_dir)
+        with tempfile.TemporaryDirectory() as td:
+            imgs: list[str] = []
+            for k, p in enumerate(inputs):
+                if p.suffix.lower() == ".pdf":
+                    # Per-PDF subdir: pdf_to_images names pages page_NNNN.png,
+                    # so a shared dir would collide across documents.
+                    sub = Path(td) / f"doc_{k:03d}"
+                    sub.mkdir()
+                    pages = pdf_to_images(p, sub, args.dpi, args.pages)
+                    print(f"[ocr] {p.name}: {len(pages)} page(s) @ {args.dpi} dpi", file=sys.stderr)
+                    imgs.extend(pages)
+                else:
+                    imgs.append(str(p))
+            model, tok = load_model(model_dir, device, dtype)
+            text = run_multi(model, tok, imgs, mprompt, args.max_length, save_dir)
     else:
         prompt = args.prompt or ("<image>" + TASKS[args.task])
+        model, tok = load_model(model_dir, device, dtype)
         text = run_single(model, tok, inputs[0], prompt, args.mode, args.max_length, save_dir)
 
     if not args.raw:

@@ -90,8 +90,13 @@ fi
 #      the server (SIGABRT). KeepAlive would then restart-and-crash forever.
 #   Wait for: mlx_lm to support QuantizedKVCache trimming + a Qwen3.5 draft
 #   that ships with the Qwen3.6 tokenizer. Until then, leave it off.
+# No --model on purpose: with a default model set, mlx_lm eagerly loads all
+# ~15 GB at every launchd start (RunAtLoad + each KeepAlive crash-restart) and
+# macOS just pages it out again while idle — pure boot I/O and swap churn that
+# also risks Metal OOM alongside llama-swap's 18 GB chat models. Requests load
+# their named model on demand; /v1/models still lists everything in the HF
+# cache. All current clients (Open WebUI, dashboard, status.sh) name a model.
 "$PYBIN" -m mlx_lm server \
-  --model mlx-community/Qwen3.6-27B-4bit \
   --prompt-cache-size 64 \
   --max-tokens 32768 \
   --host 0.0.0.0 \

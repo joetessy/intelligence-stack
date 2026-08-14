@@ -20,6 +20,15 @@
 #   FlareSolverr → internal only (Docker DNS: flaresolverr:8191, no host port)
 # =============================================================================
 
+# Cap json-file logs at 30 MB/service (10m × 3): with 30s healthchecks on an
+# always-on stack, unbounded logs permanently grow Docker Desktop's VM disk
+# image on macOS (it never shrinks).
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
 
   flaresolverr:
@@ -29,6 +38,7 @@ services:
     image: ghcr.io/flaresolverr/flaresolverr:latest@sha256:139dfee1c6f89249c8d665d1333a42e8ec74ec0a86bc6bb1c8461e10d3a66a47
     container_name: flaresolverr
     restart: unless-stopped
+    logging: *default-logging
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8191/health"]
       interval: 30s
@@ -42,14 +52,17 @@ services:
       - ai-stack
 
   playwright:
-    # Image tag and npx version MUST match — Playwright server/client wire format
-    # changes between minor releases. To upgrade: pick a new vX.Y.Z, bump BOTH
-    # the image tag and the npx version, refresh the @sha256 with:
-    #   docker manifest inspect mcr.microsoft.com/playwright:vX.Y.Z-noble | grep digest
-    image: mcr.microsoft.com/playwright:v1.60.0-noble@sha256:9bd26ad900bb5e0f4dee75839e957a89ae89c2b7ab1e76050e559790e946b948
+    # Local build bakes the playwright npm package into the image so container
+    # starts never contact npmjs.org (the old `npx -y` command did on EVERY
+    # start, and an offline recreation failed the whole compose up). The base
+    # image digest pin + matching npm version live in playwright/Dockerfile —
+    # bump tag, digest, and npm version together, then:
+    #   docker compose build playwright
+    build: ./playwright
     container_name: playwright
     restart: unless-stopped
-    command: /bin/sh -c "npx -y playwright@1.60.0 run-server --port 3000 --host 0.0.0.0"
+    logging: *default-logging
+    command: playwright run-server --port 3000 --host 0.0.0.0
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/localhost/3000'"]
       interval: 30s
@@ -63,6 +76,7 @@ services:
     image: searxng/searxng:latest@sha256:02d441bbb647b7be422d21041420115cddadac4644368f67c7c7f407bbe72e22
     container_name: searxng
     restart: unless-stopped
+    logging: *default-logging
     ports:
       - "127.0.0.1:8080:8080"
     volumes:
@@ -88,8 +102,15 @@ services:
     image: fedirz/faster-whisper-server:latest-cpu@sha256:760e5e43d427dc6cfbbc4731934b908b7de9c7e6d5309c6a1f0c8c923a5b6030
     container_name: faster-whisper
     restart: unless-stopped
+    logging: *default-logging
     ports:
       - "127.0.0.1:8765:8000"
+    volumes:
+      # Persist the ~1.6GB whisper model across container recreations. The
+      # image runs as root with no HF_HOME override, so the HF cache lands in
+      # /root/.cache/huggingface. Without this, every env edit + `up -d`
+      # re-downloads the model on the first STT request.
+      - faster-whisper-cache:/root/.cache/huggingface
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/')"]
       interval: 30s
@@ -115,6 +136,7 @@ services:
     image: ghcr.io/matatonic/openedai-speech:latest@sha256:3ef4f857d5a757cfe8e9b61185df1bd3c52c45f950716a54e4399c27c3e91396
     container_name: openedai-speech
     restart: unless-stopped
+    logging: *default-logging
     ports:
       - "127.0.0.1:8880:8000"
     healthcheck:
@@ -136,6 +158,7 @@ services:
     image: ghcr.io/open-webui/open-webui:main@sha256:7f1b0a1a50cfbac23da3b16f96bc968fd757b26dc9e54e93813d61768ea9184e
     container_name: open-webui
     restart: unless-stopped
+    logging: *default-logging
     ports:
       - "127.0.0.1:3000:8080"
     healthcheck:
@@ -240,15 +263,20 @@ services:
       - "TERMINAL_SERVER_CONNECTIONS=[{\"id\":\"open-terminal\",\"name\":\"Open Terminal\",\"enabled\":true,\"url\":\"http://open-terminal:8000\",\"path\":\"/openapi.json\",\"key\":\"${OPEN_TERMINAL_API_KEY}\",\"auth_type\":\"bearer\",\"config\":{}}]"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    # service_started, not service_healthy: all four are consumed lazily per
+    # request over HTTP — a still-starting sidecar is a recoverable per-request
+    # error, not a boot failure. Gating on health (120s start_periods, 30s
+    # probe granularity) kept :3000 down for the slowest sidecar on every
+    # `compose up`. Healthchecks stay for `docker ps` and the dashboard.
     depends_on:
       searxng:
-        condition: service_healthy
+        condition: service_started
       playwright:
-        condition: service_healthy
+        condition: service_started
       faster-whisper:
-        condition: service_healthy
+        condition: service_started
       openedai-speech:
-        condition: service_healthy
+        condition: service_started
     networks:
       - ai-stack
 
@@ -256,6 +284,7 @@ services:
     image: ghcr.io/open-webui/open-terminal:latest@sha256:cf0ad7e309b3202b384560e92782b116e955c9424d6c000efe2fa7ee2608f706
     container_name: open-terminal
     restart: unless-stopped
+    logging: *default-logging
     ports:
       - "127.0.0.1:8888:8000"
     healthcheck:
@@ -277,6 +306,7 @@ services:
     build: ./dashboard
     container_name: dashboard
     restart: unless-stopped
+    logging: *default-logging
     ports:
       - "127.0.0.1:3001:3001"
     healthcheck:
@@ -311,6 +341,7 @@ volumes:
   open-webui-data:
   openedai-speech-voices:
   openedai-speech-config:
+  faster-whisper-cache:
 
 networks:
   ai-stack:

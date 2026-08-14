@@ -100,6 +100,17 @@ for gguf in "$MODELS_DIR"/*.gguf; do
   check "$stem"
 done
 
+# Re-warm the pinned always-on models drained by the preflight /unload above
+# (ttl:0 keeps them loaded afterwards). Mirrors pin-embeddings.sh; no-op if
+# llama-swap isn't running. Runs before the summary so the failure path (exit 1)
+# also re-warms.
+curl -s --max-time 120 "http://127.0.0.1:9292/v1/embeddings" \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"bge-m3","input":"warm"}' >/dev/null 2>&1 || true
+curl -s --max-time 120 "http://127.0.0.1:9292/v1/chat/completions" \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"qwen2.5-coder-1.5b-base","messages":[{"role":"user","content":"ok"}],"max_tokens":1}' >/dev/null 2>&1 || true
+
 echo ""
 echo -e "  ${GREEN}$pass passed${NC}, ${RED}$fail failed${NC}"
 if [[ $fail -gt 0 ]]; then

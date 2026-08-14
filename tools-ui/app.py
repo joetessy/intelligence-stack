@@ -49,6 +49,7 @@ class OCRModel:
         self._tok = None
         self._last_used = 0.0
         self._loading = False
+        self._busy = 0  # in-flight requests; janitor must not unload while > 0
         threading.Thread(target=self._janitor, daemon=True).start()
 
     def get(self, progress=None):
@@ -63,10 +64,13 @@ class OCRModel:
                 finally:
                     self._loading = False
             self._last_used = time.monotonic()
+            self._busy += 1  # only after a successful load; a failed load leaves 0
             return self._model, self._tok
 
     def done(self) -> None:
-        self._last_used = time.monotonic()
+        with self._lock:
+            self._busy = max(0, self._busy - 1)  # max(): harmless if get() raised
+            self._last_used = time.monotonic()
         _empty_mps_cache()
 
     def status(self) -> str:
@@ -80,7 +84,7 @@ class OCRModel:
             if IDLE_UNLOAD <= 0:
                 continue
             with self._lock:
-                idle = self._model is not None and (time.monotonic() - self._last_used) > IDLE_UNLOAD
+                idle = self._busy == 0 and self._model is not None and (time.monotonic() - self._last_used) > IDLE_UNLOAD
                 if idle:
                     self._model = None
                     self._tok = None
@@ -109,10 +113,11 @@ def _status_badge() -> str:
 def run_ocr(file_path, task, mode, pages, dpi, progress=gr.Progress()):
     if not file_path:
         return "*Upload an image or PDF first.*", "", None
-    model, tok = OCR.get(progress)
     p = Path(file_path)
-    progress(0.6, desc="Reading…")
+    # get() inside the try so `finally: OCR.done()` always rebalances _busy.
     try:
+        model, tok = OCR.get(progress)
+        progress(0.6, desc="Reading…")
         if p.suffix.lower() == ".pdf":
             with tempfile.TemporaryDirectory() as td:
                 imgs = ocrmod.pdf_to_images(p, Path(td), int(dpi), pages.strip() or None)
@@ -193,8 +198,12 @@ with gr.Blocks(title="OCR & Scores — Intelligence Stack", theme=gr.themes.Soft
                         with gr.Tab("Raw"):
                             ocr_raw = gr.Textbox(label="Result", lines=20, show_copy_button=True)
                     ocr_file = gr.File(label="Download result")
+            # concurrency_id "heavy" is shared with the score tab: Gradio's
+            # default_concurrency_limit is PER-LISTENER, so without a shared
+            # group a 13 GB OCR inference and a homr run could overlap.
             ocr_btn.click(run_ocr, [ocr_in, ocr_task, ocr_mode, ocr_pages, ocr_dpi],
-                          [ocr_md, ocr_raw, ocr_file])
+                          [ocr_md, ocr_raw, ocr_file],
+                          concurrency_id="heavy", concurrency_limit=1)
 
         with gr.Tab("Sheet music → MuseScore"):
             with gr.Row():
@@ -205,7 +214,8 @@ with gr.Blocks(title="OCR & Scores — Intelligence Stack", theme=gr.themes.Soft
                 with gr.Column(scale=3):
                     sc_preview = gr.Image(label="What homr recognized (preview)", type="filepath", height=340)
                     sc_out = gr.File(label="Download (.mscz / .musicxml)", file_count="multiple")
-            sc_btn.click(run_score, [sc_in], [sc_out, sc_preview, sc_msg])
+            sc_btn.click(run_score, [sc_in], [sc_out, sc_preview, sc_msg],
+                         concurrency_id="heavy", concurrency_limit=1)
 
     gr.Markdown(
         "_OCR: Baidu Unlimited-OCR (MPS/fp32), warm-loaded. Scores: homr → MuseScore. "

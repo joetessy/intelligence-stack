@@ -43,7 +43,7 @@ is_vision()      { [[ -f "$MODELS_DIR/$1.mmproj.gguf" ]]; }
 
 list_stems() {
   for f in "$MODELS_DIR"/*.gguf; do
-    local s; s="$(basename "$f" .gguf)"
+    local s; s="${f##*/}"; s="${s%.gguf}"
     [[ "$s" == *.mmproj ]] && continue
     echo "$s"
   done
@@ -65,13 +65,15 @@ resolve() {
   exit 1
 }
 
-server_up() { curl -sf "$ENDPOINT/v1/models" >/dev/null 2>&1; }
+server_up() { curl -sf --connect-timeout 2 --max-time 5 "$ENDPOINT/v1/models" >/dev/null 2>&1; }
 
 cmd_list() {
   echo -e "${c_b}Local models${c_n} ${c_dim}($MODELS_DIR — served at $ENDPOINT)${c_n}"
-  local loaded=""
-  if server_up; then
-    loaded="$(curl -s "$ENDPOINT/running" 2>/dev/null \
+  # One request answers both "is it up" and "what's loaded".
+  local loaded="" up=0 running_json=""
+  if running_json="$(curl -sf --connect-timeout 2 --max-time 5 "$ENDPOINT/running" 2>/dev/null)"; then
+    up=1
+    loaded="$(printf '%s' "$running_json" \
       | python3 -c "import sys,json;print(' '.join(m['model'] for m in json.load(sys.stdin).get('running',[])))" 2>/dev/null || true)"
   fi
   while IFS= read -r s; do
@@ -82,13 +84,13 @@ cmd_list() {
     [[ " $loaded " == *" $s "* ]] && mark="${c_g}● loaded${c_n}"
     printf "  %-54s ${c_dim}%-8s${c_n} %b\n" "$s" "$tag" "$mark"
   done < <(list_stems)
-  if server_up; then :; else echo -e "  ${c_y}(llama-swap not reachable — load states unknown)${c_n}"; fi
+  [[ $up -eq 1 ]] || echo -e "  ${c_y}(llama-swap not reachable — load states unknown)${c_n}"
   echo -e "${c_dim}unsupported = Ollama-fork-only arch; qwen3.6 is available via MLX/Open WebUI.${c_n}"
 }
 
 cmd_ps() {
   server_up || die "llama-swap not reachable at $ENDPOINT (service: launchctl list | grep llama-swap)"
-  curl -s "$ENDPOINT/running" | python3 -c "
+  curl -s --connect-timeout 2 --max-time 5 "$ENDPOINT/running" | python3 -c "
 import sys,json
 r=json.load(sys.stdin).get('running',[])
 if not r: print('  (no models loaded)'); raise SystemExit
@@ -107,7 +109,8 @@ import json, sys
 print(json.dumps({"model": sys.argv[1], "input": sys.argv[2]}))
 PY
 )"
-  curl -s "$ENDPOINT/v1/embeddings" -H 'Content-Type: application/json' -d "$payload" \
+  printf '%s' "$payload" | curl -s --connect-timeout 2 --max-time 120 "$ENDPOINT/v1/embeddings" \
+    -H 'Content-Type: application/json' --data-binary @- \
     | python3 -c "import sys,json;v=json.load(sys.stdin)['data'][0]['embedding'];print(f'{len(v)}-dim:',[round(x,4) for x in v[:8]],'...')"
 }
 
@@ -129,10 +132,17 @@ if image:
     ]
 else:
     content = prompt
-print(json.dumps({"model": model, "messages": [{"role": "user", "content": content}], "stream": False}))
+# Bound generation: thinking models (qwen3.8, deepseek-r1) otherwise reason for
+# minutes on open questions with no cap. reasoning_effort is honored by
+# qwen3.8's chat template and ignored by templates that don't use it.
+print(json.dumps({"model": model, "messages": [{"role": "user", "content": content}], "stream": False,
+                  "max_tokens": 4096, "chat_template_kwargs": {"reasoning_effort": "low"}}))
 PY
 )"
-  curl -s "$ENDPOINT/v1/chat/completions" -H 'Content-Type: application/json' -d "$payload" \
+  # Payload via stdin: base64 images inflate past macOS's 1 MB ARG_MAX when the
+  # JSON rides argv — any image over ~700 KB made the exec fail outright.
+  printf '%s' "$payload" | curl -s --connect-timeout 2 --max-time 300 "$ENDPOINT/v1/chat/completions" \
+    -H 'Content-Type: application/json' --data-binary @- \
     | python3 -c "
 import sys,json
 d=json.load(sys.stdin)

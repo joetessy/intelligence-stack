@@ -24,6 +24,8 @@ healthCheckTimeout: 300        # big models can take a while to load on first hi
 logLevel: info
 startPort: 9300                # per-model upstream ports auto-assigned from here
 globalTTL: 300                 # default: unload a model after 5 min idle
+sendLoadingState: true         # stream load progress (reasoning_content) on cold
+                               # swaps so clients see feedback, not a frozen spinner
 
 macros:
   models_dir: "${env.HOME}/models"
@@ -47,6 +49,10 @@ macros:
   # --batch-size/--ubatch-size 4096: embedding models require each input to fit
   # in one physical batch (default 512 rejects inputs > ~510 tokens). 4096 lets
   # Brain Bank embed 800-token chunks and leaves headroom up to bge-m3's 8192 ctx.
+  # --load-mode mmap+mlock wires the small pinned models (~2 GB total) so an
+  # 18 GB chat-model load can't evict their pages — "pinned" otherwise only
+  # means the process survives while the first RAG query re-reads from disk.
+  # Never add this to server-chat: it would wire the big swap models.
   server-embed: >
     /opt/homebrew/bin/llama-server
     --port ${PORT}
@@ -55,6 +61,7 @@ macros:
     --batch-size 4096
     --ubatch-size 4096
     -ngl auto
+    --load-mode mmap+mlock
 
 models:
   # ── Embeddings (pinned; see the "always-on" group) ────────────────────────
@@ -83,6 +90,7 @@ models:
     cmd: |
       ${server-chat}
       -m ${models_dir}/qwen2.5-coder-1.5b-base.gguf
+      --load-mode mmap+mlock
     name: "Qwen2.5-Coder 1.5B (task model)"
     description: "Cheap model for Open WebUI title/tag/query generation"
     ttl: 0

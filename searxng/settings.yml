@@ -130,3 +130,6 @@ engines:
   - name: wolframalpha
     disabled: false
     categories: [general, science]
+    # Upstream default timeout is 6.0s — without this cap the slowest scraper
+    # silently raises every general query's ceiling from 4.0s to 6s.
+    timeout: 4.0
