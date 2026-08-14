@@ -67,8 +67,8 @@ export const SERVICES: readonly ServiceConfig[] = [
   },
   {
     id: "tools-ui",
-    name: "OCR & Scores",
-    description: "OCR + sheet-music → MuseScore",
+    name: "OCR",
+    description: "Documents (image/PDF) → Markdown",
     hostUrl: "http://localhost:5005",
     healthUrl: `${TOOLS_UI_URL}`
   },
