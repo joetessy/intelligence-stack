@@ -50,6 +50,7 @@ The dashboard is at **http://localhost:3001**.
 | **Open WebUI** | http://localhost:3000 | Chat, RAG, voice, web search |
 | **Dashboard** | http://localhost:3001 | Service health + model browser |
 | **SearXNG** | http://localhost:8080 | Search engine (direct access) |
+| **OCR** | http://localhost:5005 | Document OCR web UI (images and PDFs) |
 | **Open Terminal** | http://localhost:3000 | Web terminal (via Open WebUI sidebar) |
 
 ## Screenshots
@@ -83,6 +84,7 @@ Native on host:
   MLX-LM (5001)       Apple Silicon inference (OpenAI-compatible API)
   llama-swap (9292)   llama.cpp GGUF models + embeddings (bge-m3), hot-swapped
                       on demand behind one OpenAI-compatible endpoint
+  Tools UI (5005)     OCR web UI (Gradio) — also converts sheet music to MuseScore
 
 Optional (host-native):
   MCP Filesystem (8901)  file read/write for Open WebUI models
@@ -101,6 +103,7 @@ Optional (host-native):
 | [Open Terminal](https://github.com/open-webui/open-terminal) | Web-based terminal with shell access | 8888 |
 | [MLX-LM](https://github.com/ml-explore/mlx-lm) | Apple Silicon optimized inference (OpenAI-compatible API) | 5001 |
 | [llama.cpp](https://github.com/ggml-org/llama.cpp) + [llama-swap](https://github.com/mostlygeek/llama-swap) | GGUF model inference + embeddings, multi-model hot-swap | 9292 |
+| Tools UI | OCR web UI (Gradio) + Finder Quick Actions | 5005 |
 
 ---
 
@@ -118,6 +121,44 @@ Open WebUI is wired directly to SearXNG via its internal Docker network (`searxn
 To enable web search by default for all chats: Admin Panel → Settings → Web Search → toggle on.
 
 **Direct SearXNG access** at http://localhost:8080 gives you the full search UI with category tabs (General, Images, Videos, News, Science, Map) — useful for browsing results directly without going through a model.
+
+---
+
+## Voice (speech-to-text + text-to-speech)
+
+Voice needs no setup. `docker-compose.yml` registers both engines with
+Open WebUI (the `AUDIO_STT_*` and `AUDIO_TTS_*` variables):
+
+- **Speech-to-text** — Faster-Whisper (`large-v3-turbo`) on port 8765
+- **Text-to-speech** — openedai-speech (Piper voices, default `nova`) on port 8880
+
+**To dictate a message:**
+1. Click the microphone icon in the message bar.
+2. Speak. The transcript appears in the input box.
+
+**To hold a spoken conversation:**
+1. Click the call icon at the right end of the message bar.
+2. Talk normally. Whisper transcribes you, the model answers, and
+   openedai-speech reads the reply aloud.
+
+To change the voice or the STT model: Admin Panel → Settings → Audio.
+
+---
+
+## RAG — chat with your documents
+
+Embeddings come from `bge-m3`, served by llama-swap and pinned always-on, so
+retrieval never waits for a model load (`RAG_EMBEDDING_ENGINE` in
+`docker-compose.yml`).
+
+**To ask about one file:** click **+** in the message bar, upload the file, and
+ask your question.
+
+**To build a reusable knowledge base:**
+1. Open **Workspace → Knowledge** and create a collection.
+2. Upload your documents.
+3. In any chat, type `#` and select the collection to search it — or attach
+   the collection to a workspace model so that model always uses it.
 
 ---
 
@@ -176,13 +217,13 @@ is single-scale and faster. Run `ocr --help` for all flags.
 
 ---
 
-## OCR & Scores web UI + Quick Actions
+## OCR web UI + Quick Actions
 
 Two point-and-click front-ends wrap the `ocr` and `sheet2mscz` CLIs:
 
 - **Web UI** (`tools-ui/`) — a local Gradio app on **http://localhost:5005** with
   two tabs: drag in an image/PDF → OCR text, or a sheet-music image/PDF → a
-  downloadable `.mscz`. Linked from the dashboard as **OCR & Scores**. Runs
+  downloadable `.mscz`. Linked from the dashboard as **OCR**. Runs
   host-native (reuses the OCR venv, keeps the model warm) via a LaunchAgent, and
   shells out to `musescore/omr/sheet2mscz` for scores (music logic stays there).
 
@@ -244,7 +285,7 @@ work, a frontier model for the hard changes.
 | `bin/llm` | `ollama run`-style CLI (symlinked to `~/.local/bin/llm`) |
 | `ocr/` | Unlimited-OCR tool: `setup.sh` (Py3.12 venv + model), `ocr.py` (CLI), pinned `requirements.txt` |
 | `bin/ocr` | `ocr`-style CLI for Unlimited-OCR document parsing (symlink to `~/.local/bin/ocr`) |
-| `tools-ui/` | "OCR & Scores" web UI (Gradio, :5005): `app.py`, `setup.sh`, `make-quick-actions.py` |
+| `tools-ui/` | OCR web UI (Gradio, :5005): `app.py`, `setup.sh`, `make-quick-actions.py` |
 | `migrate-ollama-gguf.py`, `verify-models.sh` | One-time Ollama→llama.cpp migration: clone GGUFs out of Ollama's blob store and verify they load |
 | `mcp-servers.sh` | MCP tool servers for Open WebUI (optional) |
 | `provision-webui.sh` | Registers MCP servers and Open Terminal with Open WebUI |
@@ -266,7 +307,7 @@ work, a frontier model for the hard changes.
 | Plist | Purpose |
 |-------|---------|
 | `~/Library/LaunchAgents/com.intelligence-stack.mlx-server.plist` | MLX-LM server on port 5001 |
-| `~/Library/LaunchAgents/com.intelligence-stack.tools-ui.plist` | OCR & Scores web UI on port 5005 |
+| `~/Library/LaunchAgents/com.intelligence-stack.tools-ui.plist` | OCR web UI on port 5005 |
 | `~/Library/LaunchAgents/com.intelligence-stack.llama-swap.plist` | llama-swap on port 9292 (llama.cpp, flash attention + q8 KV cache) |
 | `~/Library/LaunchAgents/com.intelligence-stack.pin-embeddings.plist` | Warms `bge-m3` in llama-swap at login |
 | `~/Library/LaunchAgents/com.intelligence-stack.mcp-servers.plist` | MCP filesystem server on port 8901 (optional) |
